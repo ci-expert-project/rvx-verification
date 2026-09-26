@@ -1,0 +1,53 @@
+name: "✨ Sugestão de Feature"
+description: "Sugira uma melhoria ou modificação para o sistema"
+title: "[FEATURE] <Título resumido da solicitação>"
+labels: ["enhancement"]
+assignees: []
+
+body:
+  - type: input
+    id: feature_id
+    attributes:
+      label: "🆔 ID da Solicitação"
+      description: "Código interno, se aplicável (ex: 1)"
+      placeholder: "Ex: 1"
+
+  - type: textarea
+    id: versao
+    attributes:
+      label: "📦 Versão"
+      description: "Descreva a versão"
+      placeholder: "v9.4.4-rc4"
+    validations:
+      required: true
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: "✨ Descrição da Modificação Solicitada"
+      description: "Explique claramente o que deve ser alterado ou implementado"
+      placeholder: "Ex: adicionar suporte ao modo XYZ no sensor"
+
+  - type: textarea
+    id: justificativa
+    attributes:
+      label: "💡 Justificativa da Modificação"
+      description: "Por que essa modificação é necessária?"
+      placeholder: "Ex: essa melhoria reduziria falhas no processo de validação"
+
+  - type: dropdown
+    id: prioridade
+    attributes:
+      label: "🚨 Prioridade"
+      options:
+        - Urgente
+        - Próxima Versão
+        - Versões Futuras
+        - Baixa Prioridade
+
+  - type: textarea
+    id: comentarios
+    attributes:
+      label: "📝 Comentários Adicionais & Anexos"
+      description: "Comentários adicionais, prints,vídeos, logs e etc"
+      placeholder: "Só ocorre quando o gateway está desconectado do servidor. 📸Cole links ou paths para arquivos anexados"
