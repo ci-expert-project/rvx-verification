@@ -1,0 +1,9 @@
+dut/rvx/hardware/rvx_bus.v
+dut/rvx/hardware/rvx_core.v
+dut/rvx/hardware/rvx_gpio.v
+dut/rvx/hardware/rvx_mtimer.v
+dut/rvx/hardware/rvx_ram.v
+dut/rvx/hardware/rvx_spi.v
+dut/rvx/hardware/rvx_uart.v
+dut/rvx/hardware/rvx.v
+synopsys/tb/rvx_tb.sv
