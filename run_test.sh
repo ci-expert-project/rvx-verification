@@ -4,21 +4,9 @@ set -e
 
 TEST_NAME="${1:-add-01}"
 
-case "$TEST_NAME" in
-    add-01)
-        FILELIST="synopsys/filelist/rvx_core.f"
-        COMP_LOG="synopsys/log/${TEST_NAME}_comp.log"
-        RUN_LOG="synopsys/log/${TEST_NAME}.log"
-        ;;
-
-    *)
-        echo "ERRO: teste desconhecido: $TEST_NAME"
-        echo
-        echo "Testes disponíveis:"
-        echo "  add-01"
-        exit 1
-        ;;
-esac
+FILELIST="synopsys/filelist/rvx_core.f"
+COMP_LOG="synopsys/log/${TEST_NAME}_comp.log"
+RUN_LOG="synopsys/log/${TEST_NAME}.log"
 
 echo "=============================================="
 echo " RVX Core Verification"
@@ -47,6 +35,7 @@ echo
 echo "[2/2] Running simulation..."
 
 ./simv \
+  +TEST_NAME="$TEST_NAME" \
   -l "$RUN_LOG"
 
 echo

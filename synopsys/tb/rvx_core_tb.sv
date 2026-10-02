@@ -8,14 +8,11 @@ module rvx_core_tb;
 
   localparam [31:0] FINISH_ADDR = 32'h00001000;
 
-  localparam string PROGRAM_FILE =
-      "dut/rvx/hardware/tests/core/unit_tests/programs/add-01.hex";
+  string TEST_NAME;
 
-  localparam string REFERENCE_FILE =
-      "dut/rvx/hardware/tests/core/unit_tests/references/add-01.reference.hex";
-
-  localparam string DUMP_FILE =
-      "sim/results/dumps/add-01.dump.hex";
+  string PROGRAM_FILE;
+  string REFERENCE_FILE;
+  string DUMP_FILE;
 
 
   logic        clock;
@@ -153,6 +150,22 @@ module rvx_core_tb;
   integer i;
 
   initial begin
+    if (!$value$plusargs("TEST_NAME=%s", TEST_NAME))
+       TEST_NAME = "add-01";
+
+    PROGRAM_FILE =
+      {"dut/rvx/hardware/tests/core/unit_tests/programs/", TEST_NAME, ".hex"};
+
+    REFERENCE_FILE =
+      {"dut/rvx/hardware/tests/core/unit_tests/references/", TEST_NAME, ".reference.hex"};
+
+    DUMP_FILE =
+      {"sim/results/dumps/", TEST_NAME, ".dump.hex"};
+
+    $display("TEST_NAME: %s", TEST_NAME);
+    $display("PROGRAM_FILE: %s", PROGRAM_FILE);
+    $display("REFERENCE_FILE: %s", REFERENCE_FILE);
+    $display("DUMP_FILE: %s", DUMP_FILE);
 
     // Allow rvx_ram's internal initialization to complete.
     #0.1;
@@ -173,7 +186,7 @@ module rvx_core_tb;
     $display(" RAM[3] = %08h", rvx_ram_instance.ram[3]);
     $display("==============================================");
 
-    $display("RAM initialized with add-01.hex");
+    $display("RAM initialized with %s", TEST_NAME);
 
   end
 
@@ -405,7 +418,7 @@ module rvx_core_tb;
       $display(" RVX CORE TEST RESULT");
       $display("==============================================");
 
-      $display("Test            : add-01");
+      $display("Test            : %s", TEST_NAME);
       $display("Cycles          : %0d", cycles);
       $display("Signature words : %0d", reference_count);
       $display("Errors          : %0d", errors);
@@ -415,7 +428,7 @@ module rvx_core_tb;
 
         $display("");
         $display("**************************************");
-        $display(" PASS: add-01");
+        $display(" PASS: %s", TEST_NAME);
         $display("**************************************");
         $display("");
 
@@ -424,7 +437,7 @@ module rvx_core_tb;
 
         $display("");
         $display("**************************************");
-        $display(" FAIL: add-01");
+        $display(" FAIL: %s", TEST_NAME);
         $display("**************************************");
         $display("");
 
@@ -490,7 +503,7 @@ module rvx_core_tb;
         $display(" RVX CORE TEST FINISHED");
         $display("==============================================");
 
-        $display("Test       : add-01");
+        $display("Test       : %s", TEST_NAME);
         $display("Cycles     : %0d", cycles);
         $display("Finish addr: 0x%08h", rw_address);
         $display("Write data : 0x%08h", write_data);
@@ -520,7 +533,7 @@ module rvx_core_tb;
         $display(" RVX CORE TEST TIMEOUT");
         $display("==============================================");
 
-        $display("Test   : add-01");
+        $display("Test   : %s", TEST_NAME);
         $display("Cycles : %0d", cycles);
 
         $fatal(
