@@ -1,0 +1,65 @@
+==============================================
+ RVX CORE REGRESSION REPORT - Fri Oct 16 13:52:16 -03 2026
+==============================================
+TEST NAME                 | RESULT
+----------------------------------------------
+add-01                    | PASS
+addi-01                   | PASS
+and-01                    | PASS
+andi-01                   | PASS
+auipc-01                  | PASS
+beq-01                    | PASS
+bge-01                    | PASS
+bgeu-01                   | PASS
+blt-01                    | PASS
+bltu-01                   | PASS
+bne-01                    | PASS
+ebreak                    | PASS
+ecall                     | PASS
+fence-01                  | PASS
+jal-01                    | PASS
+jalr-01                   | PASS
+lb-align-01               | PASS
+lbu-align-01              | PASS
+lh-align-01               | PASS
+lhu-align-01              | PASS
+lui-01                    | PASS
+lw-align-01               | PASS
+misalign1-jalr-01         | PASS
+misalign2-jalr-01         | FAIL
+misalign-beq-01           | FAIL
+misalign-bge-01           | FAIL
+misalign-bgeu-01          | FAIL
+misalign-blt-01           | FAIL
+misalign-bltu-01          | FAIL
+misalign-bne-01           | FAIL
+misalign-jal-01           | FAIL
+misalign-lh-01            | PASS
+misalign-lhu-01           | PASS
+misalign-lw-01            | PASS
+misalign-sh-01            | PASS
+misalign-sw-01            | PASS
+or-01                     | PASS
+ori-01                    | PASS
+sb-align-01               | PASS
+sh-align-01               | PASS
+sll-01                    | PASS
+slli-01                   | PASS
+slt-01                    | PASS
+slti-01                   | PASS
+sltiu-01                  | PASS
+sltu-01                   | PASS
+sra-01                    | PASS
+srai-01                   | PASS
+srl-01                    | PASS
+srli-01                   | PASS
+sub-01                    | PASS
+sw-align-01               | PASS
+xor-01                    | PASS
+xori-01                   | PASS
+==============================================
+ REGRESSION SUMMARY
+==============================================
+Total Tests : 54
+Passed      : 46
+Failed      : 8
