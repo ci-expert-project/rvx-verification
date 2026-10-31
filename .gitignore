@@ -42,3 +42,18 @@ __pycache__/
 
 # Additional Synopsys runtime files
 cm.log
+
+# VC Formal artifacts
+vcst_rtdb/
+.vcst_rtdb/
+vc_static_shell_work/
+*_learn_dir/
+synopsys/formal/traces/
+.vcstPref
+vcst_rtdb.bak/
+*.bak
+fsdb2vcdLog/
+*.rpt
+
+# Compiled simulators
+sim/simv_rvx
