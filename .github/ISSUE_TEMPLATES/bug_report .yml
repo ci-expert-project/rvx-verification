@@ -1,0 +1,67 @@
+name: "🐞 Registro de Bug"
+description: "Crie um relatório detalhado de bug para facilitar o diagnóstico e correção."
+title: "[BUG] <Título resumido do problema>"
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: dropdown
+    id: ambiente
+    attributes:
+      label: "🧪 Onde o Bug foi Detectado?"
+      description: "Selecione o ambiente onde o bug foi identificado"
+      options:
+        - Desenvolvimento
+        - Validação
+        - Produção
+        - Campo
+    validations:
+      required: true
+
+  - type: textarea
+    id: versao
+    attributes:
+      label: "📦 Versão"
+      description: "Descreva a versão"
+      placeholder: "v9.4.4-rc4"
+    validations:
+      required: true
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: "🧾 Descrição do Bug"
+      description: "Detalhe o comportamento anômalo observado"
+      placeholder: "Explique o que aconteceu, mensagens de erro, logs, etc."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducao
+    attributes:
+      label: "🧪 Passos para Reproduzir"
+      description: "Liste os passos claros para reproduzir o bug"
+      placeholder: |
+        1. Ligue o sensor no modo seletivo de plantas vermelhas
+        2. Aponte o sensor para o teto
+        3. Passe objetos vermelhos na frente do sensor
+        4. Observe os acionamentos
+
+  - type: dropdown
+    id: severidade
+    attributes:
+      label: "🚨 Gravidade"
+      options:
+        - Crítico (sistema inutilizável)
+        - Alta (impacto funcional severo)
+        - Média (funcionalidade afetada, mas utilizável)
+        - Baixa (incomoda, mas não afeta uso direto)
+    validations:
+      required: true
+
+  - type: textarea
+    id: comentarios
+    attributes:
+      label: "📝 Comentários Adicionais & Anexos"
+      description: "Comentários adicionais, prints,vídeos, logs e etc"
+      placeholder: "Só ocorre quando o gateway está desconectado do servidor. 📸Cole links ou paths para arquivos anexados"
