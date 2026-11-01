@@ -38,6 +38,24 @@ if {[info exists ::env(VCF_TRACE_PROPS)]} {
   }
 }
 
+# 7. Optional: formal core (which DUT registers the proven properties rely on)
+#    VCF_FORMAL_CORE=1 -> formal_core.rpt, formal_core_uncovered.txt,
+#                         formal_core_total.txt (total DUT flop bits)
+if {[info exists ::env(VCF_FORMAL_CORE)]} {
+  compute_formal_core -block
+  redirect -file formal_core.rpt {
+    report_formal_core -property [get_props -status {proven}] -verbose -bit
+  }
+  set fh [open formal_core_uncovered.txt w]
+  foreach_in_collection r [get_formal_core -complement -registers] {
+    puts $fh [get_object_name $r]
+  }
+  close $fh
+  set fh [open formal_core_total.txt w]
+  puts $fh [sizeof_collection [get_sequentials]]
+  close $fh
+}
+
 if {![info exists ::env(VCF_GUI)]} {
   quit
 }

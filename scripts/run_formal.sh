@@ -6,6 +6,8 @@
 #   ./scripts/run_formal.sh gui                # GUI, for counterexample debug
 #   ./scripts/run_formal.sh trace <prop> ...   # batch run + counterexample table
 #                                              # per property (no GUI / X11 needed)
+#   ./scripts/run_formal.sh coverage           # batch run + formal core: which DUT
+#                                              # registers the proofs actually check
 #
 # The CADMICRO license server only has legacy VC Formal features, so the tool
 # must be started with -fml_ultra (the default fml_base/fml_fv modes fail with
@@ -45,6 +47,11 @@ if [ "$MODE" = "trace" ]; then
   export VCF_TRACE_PROPS="$*"
 fi
 
+if [ "$MODE" = "coverage" ]; then
+  export VCF_FORMAL_CORE=1
+  rm -f formal_core.rpt formal_core_uncovered.txt formal_core_total.txt
+fi
+
 vc_static_shell -fml_ultra -f run_vc_formal.tcl > vc_formal.log 2>&1 || true
 if [ ! -f property_report.rpt ]; then
   echo "ERROR: formal run did not complete, see $FORMAL_DIR/vc_formal.log"
@@ -68,4 +75,13 @@ if [ "$MODE" = "trace" ]; then
     python3 "$ROOT/scripts/cex_table.py" "traces/$PROP.vcd" $CEX_SIGNALS
     echo "FSDB (open in Verdi): $FORMAL_DIR/traces/$PROP.fsdb"
   done
+fi
+
+if [ "$MODE" = "coverage" ]; then
+  echo
+  if [ ! -f formal_core_total.txt ]; then
+    echo "ERROR: formal core not computed, see $FORMAL_DIR/vc_formal.log"
+    exit 1
+  fi
+  python3 "$ROOT/scripts/formal_core_summary.py" "$FORMAL_DIR" | tee formal_core_summary.txt
 fi

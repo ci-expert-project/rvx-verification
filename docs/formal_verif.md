@@ -104,6 +104,29 @@ cycle  reset  current_state  program_counter  instruction  ...  take_trap  integ
 
 Os sinais mostrados podem ser trocados com `CEX_SIGNALS="sinal1 sinal2 ..."`. O FSDB fica em `synopsys/formal/traces/` e pode ser aberto depois no Verdi.
 
+### Cobertura formal (*formal core*)
+
+```bash
+./scripts/run_formal.sh coverage
+```
+
+Para cada propriedade **provada**, o `compute_formal_core` do VC Formal lista os registradores do DUT que os engines precisaram usar na prova. A união desses conjuntos mostra que parte do estado do core as asserções realmente verificam. Registradores fora da união não são verificados por nenhuma prova. O resumo fica em `synopsys/formal/formal_core_summary.txt`.
+
+Resultado atual (31/10/2026):
+
+| Métrica | Valor |
+| :--- | :--- |
+| Bits de flip-flop do DUT no formal core | **160 / 1562 (10,2%)** |
+| Registradores do DUT no formal core | 14 / 32 |
+| Principais registradores fora do formal core | `integer_file` (992 bits, o banco de registradores), `csr_mcycle`, `csr_minstret`, `csr_mstatus_*`, `csr_mie_*`, `csr_mtvec`, `csr_mscratch` |
+
+Como interpretar:
+
+- O número cresce à medida que entram asserções sobre novas partes do core. As asserções de caminho de dados, por exemplo, trariam o `integer_file`.
+- Só propriedades **provadas** contam. As falsificadas, como a do `minstret`, não entram até o RTL ser corrigido.
+- O formal core é uma **sobre-aproximação**: um registrador estar nele indica que influencia uma prova, não que todos os seus comportamentos estejam verificados.
+- Os registradores do próprio checker (`u_rvx_core_sva.*`) são descontados.
+
 A execução completa leva menos de 1 minuto. O relatório fica em `synopsys/formal/property_report.rpt` e o log em `synopsys/formal/vc_formal.log`.
 
 > **Licença:** o servidor `27010@pgmicro01.ufrgs.br` só tem as features *legadas* do VC Formal. Sem opção, a ferramenta tenta `fml_base` → `fml_fv` e falha com `LICENSE_CHECKOUT_ERROR`; `-fml_base` e `-fml_elite` dão `LICENSE_MODE_INVALID`. O modo que funciona é **`-fml_ultra`**, que o script já usa. Para rodar manualmente:

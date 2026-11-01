@@ -49,6 +49,7 @@ vcst_rtdb/
 vc_static_shell_work/
 *_learn_dir/
 synopsys/formal/traces/
+synopsys/formal/formal_core*.txt
 .vcstPref
 vcst_rtdb.bak/
 *.bak
