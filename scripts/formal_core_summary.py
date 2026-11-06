@@ -44,11 +44,14 @@ def main():
     d = sys.argv[1] if len(sys.argv) > 1 else "."
     bits = covered_bits(os.path.join(d, "formal_core.rpt"))
     with open(os.path.join(d, "formal_core_uncovered.txt")) as f:
-        uncovered = sorted(l.strip() for l in f if l.strip())
+        uncovered = sorted(l.strip() for l in f
+                           if l.strip() and CHECKER_INSTANCE not in l)
     with open(os.path.join(d, "formal_core_total.txt")) as f:
         total = int(f.read().strip())
 
-    by_reg = collections.Counter(re.sub(r"\[\d+\]$", "", b) for b in bits)
+    # Strip every trailing index: csr_mepc[3] and integer_file[10][3] (array)
+    # both count toward their register (csr_mepc, integer_file)
+    by_reg = collections.Counter(re.sub(r"(\[\d+\])+$", "", b) for b in bits)
     pct = 100.0 * len(bits) / total if total else 0.0
 
     print("Formal core (union of proven properties)")
