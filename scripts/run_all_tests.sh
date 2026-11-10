@@ -78,7 +78,7 @@ for TEST_NAME in $TEST_FILES; do
     EXIT_CODE=$?
     set -e
 
-    if grep -q "PASS: $TEST_NAME" "$RUN_LOG"; then
+    if [ "$EXIT_CODE" -eq 0 ] && grep -q "PASS: $TEST_NAME" "$RUN_LOG"; then
         PASSED=$((PASSED + 1))
         PASSED_LIST="${PASSED_LIST}  - ${TEST_NAME}\n"
         printf "%-30s | ${GREEN}PASS${NC}\n" "$TEST_NAME"
@@ -104,3 +104,13 @@ echo -e " REGRESSION COMPLETED"
 echo -e " Total: $TOTAL | ${GREEN}Passed: $PASSED${NC} | ${RED}Failed: $FAILED${NC}"
 echo -e " Report saved to: $REPORT_FILE"
 echo -e "==============================================${NC}"
+
+echo "Exit Code : $([ "$FAILED" -eq 0 ] && echo 0 || echo 1)" >> "$REPORT_FILE"
+
+if [ "$FAILED" -gt 0 ]; then
+    echo -e "${RED}Regression finished with failures.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}All tests passed.${NC}"
+exit 0
