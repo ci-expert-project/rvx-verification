@@ -82,7 +82,7 @@ $display("==============================================");
 
 halt = 1'b0;
 uart_rx = 1'b1; // UART RX idle state
-gpio_input = 32'h00000000;
+gpio_input = 1'b0;
 
 reset = 1'b1;
 

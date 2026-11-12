@@ -4,7 +4,6 @@
 - **Projeto:** Verificação do núcleo RVX (RISC-V)
 - **Ferramentas:** Synopsys VCS W-2024.09-SP2-3 e URG W-2024.09-SP2-3
 - **Ambiente:** CADMICRO / Linux
-**Ambiente:** CADMICRO / Linux
 
 ---
 

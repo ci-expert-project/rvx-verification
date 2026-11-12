@@ -1,4 +1,4 @@
-#bash.sh - Synopys
+#!/bin/bash
 set -e
 # ============================================================
 # 1. Load Synopsys and RISC-V tools
