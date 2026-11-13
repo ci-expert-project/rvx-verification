@@ -1,0 +1,55 @@
+TESTE	CATEGORIA	RESULTADO	OBSERVACAO	LIMITACAO_CONHECIDA
+add-01	Aritmetica	PASS	Teste associado a operacao aritmetica indicada no nome.	NAO_IDENTIFICADA
+addi-01	Aritmetica	PASS	Teste associado a operacao aritmetica indicada no nome.	NAO_IDENTIFICADA
+and-01	Logica bit a bit	PASS	Teste associado a operacao logica indicada no nome.	NAO_IDENTIFICADA
+andi-01	Logica bit a bit	PASS	Teste associado a operacao logica indicada no nome.	NAO_IDENTIFICADA
+auipc-01	Constantes e endereco relativo ao PC	PASS	Teste associado a LUI/AUIPC conforme o nome.	NAO_IDENTIFICADA
+beq-01	Desvios condicionais	PASS	Teste associado a instrucao de desvio condicional indicada no nome.	NAO_IDENTIFICADA
+bge-01	Desvios condicionais	PASS	Teste associado a instrucao de desvio condicional indicada no nome.	NAO_IDENTIFICADA
+bgeu-01	Desvios condicionais	PASS	Teste associado a instrucao de desvio condicional indicada no nome.	NAO_IDENTIFICADA
+blt-01	Desvios condicionais	PASS	Teste associado a instrucao de desvio condicional indicada no nome.	NAO_IDENTIFICADA
+bltu-01	Desvios condicionais	PASS	Teste associado a instrucao de desvio condicional indicada no nome.	NAO_IDENTIFICADA
+bne-01	Desvios condicionais	PASS	Teste associado a instrucao de desvio condicional indicada no nome.	NAO_IDENTIFICADA
+ebreak	Sistema e excecoes	PASS	Teste identificado pelo nome como relacionado a ECALL/EBREAK; o nome, isoladamente, nao caracteriza toda a verificacao da excecao.	NAO_IDENTIFICADA
+ecall	Sistema e excecoes	PASS	Teste identificado pelo nome como relacionado a ECALL/EBREAK; o nome, isoladamente, nao caracteriza toda a verificacao da excecao.	NAO_IDENTIFICADA
+fence-01	Ordenacao de memoria	PASS	Teste identificado pelo nome como relacionado a FENCE.	NAO_IDENTIFICADA
+jal-01	Saltos	PASS	Teste associado a instrucao de salto indicada no nome.	NAO_IDENTIFICADA
+jalr-01	Saltos	PASS	Teste associado a instrucao de salto indicada no nome.	NAO_IDENTIFICADA
+lb-align-01	Leitura de memoria	PASS	Teste associado a instrucao de carga indicada no nome.	NAO_IDENTIFICADA
+lbu-align-01	Leitura de memoria	PASS	Teste associado a instrucao de carga indicada no nome.	NAO_IDENTIFICADA
+lh-align-01	Leitura de memoria	PASS	Teste associado a instrucao de carga indicada no nome.	NAO_IDENTIFICADA
+lhu-align-01	Leitura de memoria	PASS	Teste associado a instrucao de carga indicada no nome.	NAO_IDENTIFICADA
+lui-01	Constantes e endereco relativo ao PC	PASS	Teste associado a LUI/AUIPC conforme o nome.	NAO_IDENTIFICADA
+lw-align-01	Leitura de memoria	PASS	Teste associado a instrucao de carga indicada no nome.	NAO_IDENTIFICADA
+misalign1-jalr-01	Saltos/desvios com desalinhamento	PASS	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. Resultado PASS no baseline; verificar o comportamento especifico antes de concluir suporte geral a desalinhamentos.	A_CONFIRMAR
+misalign2-jalr-01	Saltos/desvios com desalinhamento	FAIL	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. O testbench Vivado lista este teste em expected_to_fail; o baseline Synopsys registra FAIL.	SIM
+misalign-beq-01	Saltos/desvios com desalinhamento	FAIL	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. O testbench Vivado lista este teste em expected_to_fail; o baseline Synopsys registra FAIL.	SIM
+misalign-bge-01	Saltos/desvios com desalinhamento	FAIL	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. O testbench Vivado lista este teste em expected_to_fail; o baseline Synopsys registra FAIL.	SIM
+misalign-bgeu-01	Saltos/desvios com desalinhamento	FAIL	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. O testbench Vivado lista este teste em expected_to_fail; o baseline Synopsys registra FAIL.	SIM
+misalign-blt-01	Saltos/desvios com desalinhamento	FAIL	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. O testbench Vivado lista este teste em expected_to_fail; o baseline Synopsys registra FAIL.	SIM
+misalign-bltu-01	Saltos/desvios com desalinhamento	FAIL	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. O testbench Vivado lista este teste em expected_to_fail; o baseline Synopsys registra FAIL.	SIM
+misalign-bne-01	Saltos/desvios com desalinhamento	FAIL	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. O testbench Vivado lista este teste em expected_to_fail; o baseline Synopsys registra FAIL.	SIM
+misalign-jal-01	Saltos/desvios com desalinhamento	FAIL	Teste de salto/desvio associado a endereco desalinhado; a observacao detalhada requer analise do programa e do log. O testbench Vivado lista este teste em expected_to_fail; o baseline Synopsys registra FAIL.	SIM
+misalign-lh-01	Acesso a memoria desalinhado	PASS	Teste identificado pelo nome como acesso desalinhado; nao inferir cobertura de todos os casos de excecao. Resultado PASS no baseline; verificar o comportamento especifico antes de concluir suporte geral a desalinhamentos.	A_CONFIRMAR
+misalign-lhu-01	Acesso a memoria desalinhado	PASS	Teste identificado pelo nome como acesso desalinhado; nao inferir cobertura de todos os casos de excecao. Resultado PASS no baseline; verificar o comportamento especifico antes de concluir suporte geral a desalinhamentos.	A_CONFIRMAR
+misalign-lw-01	Acesso a memoria desalinhado	PASS	Teste identificado pelo nome como acesso desalinhado; nao inferir cobertura de todos os casos de excecao. Resultado PASS no baseline; verificar o comportamento especifico antes de concluir suporte geral a desalinhamentos.	A_CONFIRMAR
+misalign-sh-01	Acesso a memoria desalinhado	PASS	Teste identificado pelo nome como acesso desalinhado; nao inferir cobertura de todos os casos de excecao. Resultado PASS no baseline; verificar o comportamento especifico antes de concluir suporte geral a desalinhamentos.	A_CONFIRMAR
+misalign-sw-01	Acesso a memoria desalinhado	PASS	Teste identificado pelo nome como acesso desalinhado; nao inferir cobertura de todos os casos de excecao. Resultado PASS no baseline; verificar o comportamento especifico antes de concluir suporte geral a desalinhamentos.	A_CONFIRMAR
+or-01	Logica bit a bit	PASS	Teste associado a operacao logica indicada no nome.	NAO_IDENTIFICADA
+ori-01	Logica bit a bit	PASS	Teste associado a operacao logica indicada no nome.	NAO_IDENTIFICADA
+sb-align-01	Escrita em memoria	PASS	Teste associado a instrucao de armazenamento indicada no nome.	NAO_IDENTIFICADA
+sh-align-01	Escrita em memoria	PASS	Teste associado a instrucao de armazenamento indicada no nome.	NAO_IDENTIFICADA
+sll-01	Deslocamentos	PASS	Teste associado a operacao de deslocamento indicada no nome.	NAO_IDENTIFICADA
+slli-01	Deslocamentos	PASS	Teste associado a operacao de deslocamento indicada no nome.	NAO_IDENTIFICADA
+slt-01	Comparacao	PASS	Teste associado a comparacao com sinal ou sem sinal indicada no nome.	NAO_IDENTIFICADA
+slti-01	Comparacao	PASS	Teste associado a comparacao com sinal ou sem sinal indicada no nome.	NAO_IDENTIFICADA
+sltiu-01	Comparacao	PASS	Teste associado a comparacao com sinal ou sem sinal indicada no nome.	NAO_IDENTIFICADA
+sltu-01	Comparacao	PASS	Teste associado a comparacao com sinal ou sem sinal indicada no nome.	NAO_IDENTIFICADA
+sra-01	Deslocamentos	PASS	Teste associado a operacao de deslocamento indicada no nome.	NAO_IDENTIFICADA
+srai-01	Deslocamentos	PASS	Teste associado a operacao de deslocamento indicada no nome.	NAO_IDENTIFICADA
+srl-01	Deslocamentos	PASS	Teste associado a operacao de deslocamento indicada no nome.	NAO_IDENTIFICADA
+srli-01	Deslocamentos	PASS	Teste associado a operacao de deslocamento indicada no nome.	NAO_IDENTIFICADA
+sub-01	Aritmetica	PASS	Teste associado a operacao aritmetica indicada no nome.	NAO_IDENTIFICADA
+sw-align-01	Escrita em memoria	PASS	Teste associado a instrucao de armazenamento indicada no nome.	NAO_IDENTIFICADA
+xor-01	Logica bit a bit	PASS	Teste associado a operacao logica indicada no nome.	NAO_IDENTIFICADA
+xori-01	Logica bit a bit	PASS	Teste associado a operacao logica indicada no nome.	NAO_IDENTIFICADA
