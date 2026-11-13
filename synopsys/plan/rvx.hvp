@@ -8,7 +8,10 @@ plan rvx;
   // Métricas
   metric enum {proven, covered, falsified, uncoverable, vacuous, inconclusive} formal;
     aggregator = sum;
-    goal = ((formal.falsified + formal.uncoverable +
+    // Verde só se: tem pelo menos uma propriedade aprovada (senão é lacuna)
+    // e nenhuma propriedade falhou
+    goal = ((formal.proven + formal.covered) > 0) &&
+           ((formal.falsified + formal.uncoverable +
              formal.vacuous   + formal.inconclusive) == 0);
   endmetric
 
