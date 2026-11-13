@@ -62,6 +62,10 @@ sed -n '/Property List/,$p' property_report.rpt | grep -E "^\s+\[ *[0-9]+\]"
 echo
 echo "Full report: $FORMAL_DIR/property_report.rpt"
 
+# Verdi Planner user data (status of each property for synopsys/plan/rvx.hvp)
+echo
+python3 "$ROOT/scripts/formal_status_to_hvp.py"
+
 if [ "$MODE" = "trace" ]; then
   module load verdi
   for PROP in $VCF_TRACE_PROPS; do

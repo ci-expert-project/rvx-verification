@@ -1,0 +1,562 @@
+plan rvx;
+
+  // Atributos -> colunas
+  attribute string req_id   = "";
+  attribute string spec_ref = "";
+  attribute string method   = "";     // formal-FPV, formal-CC, formal-FRV, sim
+
+  // Métricas
+  metric enum {proven, covered, falsified, uncoverable, vacuous, inconclusive} formal;
+    aggregator = sum;
+    goal = ((formal.falsified + formal.uncoverable +
+             formal.vacuous   + formal.inconclusive) == 0);
+  endmetric
+
+  // ===========================================================================
+  // rvx_core
+  // ===========================================================================
+  feature core;
+    spec_ref = "Priv. Spec cap. 3; Unpriv. Spec cap. 2";
+    method   = "formal-FPV";
+
+    // Exceções síncronas: mepc, mcause, mtval, instrução que gera trap não retira
+    feature traps;
+      spec_ref = "Priv. Spec 3.1.14 (mepc), 3.1.15 (mcause), 3.1.16 (mtval), 3.1.7 (mtvec)";
+      method   = "formal-FPV";
+
+      feature CORE_TRAP_001;
+        req_id      = "CORE-TRAP-001";
+        description = "Em instruction-address-misaligned, mcause = 0";
+        spec_ref    = "Priv. Spec 3.1.15 (mcause)";
+        measure formal st;
+          source = "ast_mcause_misaligned_fetch", "cov_misaligned_fetch_trap";
+        endmeasure
+      endfeature
+
+      feature CORE_TRAP_002;
+        req_id      = "CORE-TRAP-002";
+        description = "Em instruction-address-misaligned, mtval = endereço alvo do salto";
+        spec_ref    = "Priv. Spec 3.1.16 (mtval)";
+        measure formal st;
+          source = "ast_mtval_misaligned_fetch";
+        endmeasure
+      endfeature
+
+      feature CORE_TRAP_003;
+        req_id      = "CORE-TRAP-003";
+        description = "Em qualquer exceção, mepc = endereço da instrução que a gerou";
+        spec_ref    = "Priv. Spec 3.1.14 (mepc)";
+        measure formal st;
+          source = "ast_mepc_is_faulting_pc", "ast_mepc_misaligned_fetch",
+                   "cov_ecall_trap", "cov_ebreak_trap",
+                   "cov_misaligned_load_trap", "cov_misaligned_store_trap";
+        endmeasure
+      endfeature
+
+      feature CORE_TRAP_004;
+        req_id      = "CORE-TRAP-004";
+        description = "Com IALIGN=32, mepc[1:0] é sempre lido como 0";
+        spec_ref    = "Priv. Spec 3.1.14 (mepc)";
+        measure formal st;
+          source = "ast_mepc_aligned";
+        endmeasure
+      endfeature
+
+      feature CORE_TRAP_005;
+        req_id      = "CORE-TRAP-005";
+        description = "A instrução que gera exceção não escreve em rd (trap preciso)";
+        spec_ref    = "Unpriv. Spec 1.6 (exceptions, traps); Priv. Spec 3.1.15 (mcause)";
+        measure formal st;
+          source = "ast_no_rd_write_on_exception", "ast_no_rd_write_misaligned_fetch",
+                   "ast_no_rd_write_illegal", "ast_no_rd_write_misaligned_load";
+        endmeasure
+      endfeature
+
+      feature CORE_TRAP_006;
+        req_id      = "CORE-TRAP-006";
+        description = "Após tomar um trap, o PC vai para o endereço definido por mtvec";
+        spec_ref    = "Priv. Spec 3.1.7 (mtvec)";
+        measure formal st;
+          source = "ast_pc_to_trap_vector";
+        endmeasure
+      endfeature
+
+      feature CORE_TRAP_007;
+        req_id      = "CORE-TRAP-007";
+        description = "mret retoma a execução no endereço em mepc";
+        spec_ref    = "Priv. Spec 3.3.2 (mret)";
+        measure formal st;
+          source = "ast_mret_to_mepc", "cov_trap_then_mret";
+        endmeasure
+      endfeature
+
+      feature CORE_TRAP_008;
+        req_id      = "CORE-TRAP-008";
+        description = "mepc é escrito uma vez por trap e não muda durante a entrada no handler";
+        spec_ref    = "Priv. Spec 3.1.14 (mepc)";
+        measure formal st;
+          source = "ast_mepc_stable_on_trap_entry";
+        endmeasure
+      endfeature
+
+      // ---- Lacunas: requisitos ainda sem propriedade ----
+
+      feature CORE_TRAP_009;
+        req_id      = "CORE-TRAP-009";
+        description = "Em ecall (M-mode), mcause = 11";
+        spec_ref    = "Priv. Spec 3.1.15 (mcause)";
+      endfeature
+
+      feature CORE_TRAP_010;
+        req_id      = "CORE-TRAP-010";
+        description = "Em ebreak, mcause = 3";
+        spec_ref    = "Priv. Spec 3.1.15 (mcause)";
+      endfeature
+
+      feature CORE_TRAP_011;
+        req_id      = "CORE-TRAP-011";
+        description = "Em illegal instruction, mcause = 2";
+        spec_ref    = "Priv. Spec 3.1.15 (mcause)";
+      endfeature
+
+      feature CORE_TRAP_012;
+        req_id      = "CORE-TRAP-012";
+        description = "Em load/store address misaligned, mcause = 4/6 e mtval = endereço acessado";
+        spec_ref    = "Priv. Spec 3.1.15 (mcause), 3.1.16 (mtval)";
+      endfeature
+    endfeature
+
+    // MEI/MTI/MSI + fast irqs (custom RVX), mstatus.MIE/MPIE, mret
+    feature interrupts;
+      spec_ref = "Priv. Spec 3.1.6 (mstatus), 3.1.9 (mip/mie), 3.3.2 (mret); Doc RVX (fast irqs)";
+      method   = "formal-FPV";
+
+      feature CORE_IRQ_001;
+        req_id      = "CORE-IRQ-001";
+        description = "Interrupção só é tomada com mstatus.MIE = 1 e (mie & mip) != 0";
+        spec_ref    = "Priv. Spec 3.1.6.1 (MIE), 3.1.9 (mip/mie)";
+        measure formal st;
+          source = "ast_irq_requires_enable", "cov_irq_taken";
+        endmeasure
+      endfeature
+
+      feature CORE_IRQ_002;
+        req_id      = "CORE-IRQ-002";
+        description = "Em interrupção, mcause[31] = 1";
+        spec_ref    = "Priv. Spec 3.1.15 (mcause)";
+        measure formal st;
+          source = "ast_irq_mcause_flag";
+        endmeasure
+      endfeature
+
+      feature CORE_IRQ_003;
+        req_id      = "CORE-IRQ-003";
+        description = "Na entrada de trap: MPIE <- MIE e MIE <- 0";
+        spec_ref    = "Priv. Spec 3.1.6.1 (mstatus)";
+        measure formal st;
+          source = "ast_trap_entry_mstatus";
+        endmeasure
+      endfeature
+
+      feature CORE_IRQ_004;
+        req_id      = "CORE-IRQ-004";
+        description = "Em mret: MIE <- MPIE e MPIE <- 1";
+        spec_ref    = "Priv. Spec 3.1.6.1 (mstatus), 3.3.2 (mret)";
+        measure formal st;
+          source = "ast_mret_mstatus", "cov_irq_then_mret";
+        endmeasure
+      endfeature
+
+      feature CORE_IRQ_005;
+        req_id      = "CORE-IRQ-005";
+        description = "Load/store interrompido não executou: mepc aponta para ele e mret o reexecuta";
+        spec_ref    = "Priv. Spec 3.1.14 (mepc); Doc RVX";
+        measure formal st;
+          source = "ast_irq_replays_load_store", "cov_irq_on_load_store";
+        endmeasure
+      endfeature
+
+      feature CORE_IRQ_006;
+        req_id      = "CORE-IRQ-006";
+        description = "Instrução que já escreveu rd não é reexecutada após mret (mepc não aponta para ela)";
+        spec_ref    = "Priv. Spec 3.1.14 (mepc)";
+        measure formal st;
+          source = "ast_irq_no_double_execution";
+        endmeasure
+      endfeature
+
+      // ---- Lacunas: requisitos ainda sem propriedade ----
+
+      feature CORE_IRQ_007;
+        req_id      = "CORE-IRQ-007";
+        description = "Prioridade entre interrupções simultâneas: MEI > MSI > MTI (e fast irqs conforme Doc RVX)";
+        spec_ref    = "Priv. Spec 3.1.9 (mip/mie); Doc RVX (fast irqs)";
+      endfeature
+
+      feature CORE_IRQ_008;
+        req_id      = "CORE-IRQ-008";
+        description = "mcause[30:0] tem o código da interrupção tomada (MSI=3, MTI=7, MEI=11, fast >= 16)";
+        spec_ref    = "Priv. Spec 3.1.15 (mcause); Doc RVX (fast irqs)";
+      endfeature
+    endfeature
+
+    // Acesso a CSR: CSRRW/S/C, CSR somente leitura, CSR inexistente, WARL
+    feature csrs;
+      spec_ref = "Priv. Spec 2.1 (CSR address map); Unpriv. Spec cap. Zicsr";
+      method   = "formal-FPV";
+
+      feature CORE_CSR_001;
+        req_id      = "CORE-CSR-001";
+        description = "Escrita em CSR somente leitura (addr[11:10] = 11) gera illegal instruction";
+        spec_ref    = "Priv. Spec 2.1 (CSR address map)";
+        measure formal st;
+          source = "ast_ro_csr_write_illegal";
+        endmeasure
+      endfeature
+
+      // ---- Lacunas: requisitos ainda sem propriedade ----
+
+      feature CORE_CSR_002;
+        req_id      = "CORE-CSR-002";
+        description = "CSRRW/CSRRS/CSRRC devolvem em rd o valor antigo do CSR e aplicam write/set/clear";
+        spec_ref    = "Unpriv. Spec cap. Zicsr";
+      endfeature
+
+      feature CORE_CSR_003;
+        req_id      = "CORE-CSR-003";
+        description = "Acesso a CSR não implementado gera illegal instruction";
+        spec_ref    = "Priv. Spec 2.1 (CSR address map)";
+      endfeature
+
+      feature CORE_CSR_004;
+        req_id      = "CORE-CSR-004";
+        description = "mscratch é leitura/escrita sem efeitos colaterais";
+        spec_ref    = "Priv. Spec 3.1.13 (mscratch)";
+      endfeature
+    endfeature
+
+    // mcycle/minstret (+h), cycle/time/instret
+    feature counters;
+      spec_ref = "Priv. Spec 3.1.11 (counters); Unpriv. Spec cap. Zicntr";
+      method   = "formal-FPV";
+
+      feature CORE_CNT_001;
+        req_id      = "CORE-CNT-001";
+        description = "mcycle incrementa 1 a cada ciclo, exceto quando escrito por software";
+        spec_ref    = "Priv. Spec 3.1.11 (mcycle)";
+        measure formal st;
+          source = "ast_mcycle_increments";
+        endmeasure
+      endfeature
+
+      feature CORE_CNT_002;
+        req_id      = "CORE-CNT-002";
+        description = "minstret não conta instrução que gera exceção";
+        spec_ref    = "Priv. Spec 3.1.11 (minstret)";
+        measure formal st;
+          source = "ast_minstret_no_count_on_trap";
+        endmeasure
+      endfeature
+
+      feature CORE_CNT_003;
+        req_id      = "CORE-CNT-003";
+        description = "minstret não conta load/store enquanto espera resposta da memória";
+        spec_ref    = "Priv. Spec 3.1.11 (minstret)";
+        measure formal st;
+          source = "ast_minstret_no_count_while_waiting";
+        endmeasure
+      endfeature
+
+      // ---- Lacunas: requisitos ainda sem propriedade ----
+
+      feature CORE_CNT_004;
+        req_id      = "CORE-CNT-004";
+        description = "minstret incrementa exatamente 1 por instrução retirada";
+        spec_ref    = "Priv. Spec 3.1.11 (minstret)";
+      endfeature
+    endfeature
+
+    // Protocolo do lado do core: request/response, hold, strobe, alinhamento
+    feature bus_protocol;
+      spec_ref = "Doc RVX (interface de memória)";
+      method   = "formal-FPV";
+
+      feature CORE_BUS_001;
+        req_id      = "CORE-BUS-001";
+        description = "read_request e write_request nunca ativos ao mesmo tempo";
+        measure formal st;
+          source = "ast_bus_no_read_and_write";
+        endmeasure
+      endfeature
+
+      feature CORE_BUS_002;
+        req_id      = "CORE-BUS-002";
+        description = "Leitura mantém request e endereço estáveis até a resposta";
+        measure formal st;
+          source = "ast_bus_read_hold", "cov_read_wait_state";
+        endmeasure
+      endfeature
+
+      feature CORE_BUS_003;
+        req_id      = "CORE-BUS-003";
+        description = "Escrita mantém request, endereço, dado e strobe estáveis até a resposta";
+        measure formal st;
+          source = "ast_bus_write_hold", "cov_write_wait_state";
+        endmeasure
+      endfeature
+
+      feature CORE_BUS_004;
+        req_id      = "CORE-BUS-004";
+        description = "Toda escrita tem pelo menos um byte habilitado no strobe";
+        measure formal st;
+          source = "ast_bus_write_strobe";
+        endmeasure
+      endfeature
+
+      feature CORE_BUS_005;
+        req_id      = "CORE-BUS-005";
+        description = "Todo acesso ao barramento usa endereço alinhado a palavra";
+        measure formal st;
+          source = "ast_bus_word_aligned";
+        endmeasure
+      endfeature
+    endfeature
+
+    // x0 hardwired to zero
+    feature x0;
+      spec_ref = "Unpriv. Spec 2.1 (registradores)";
+      method   = "formal-FPV";
+
+      feature CORE_X0_001;
+        req_id      = "CORE-X0-001";
+        description = "Leitura de x0 (rs1 ou rs2) sempre retorna 0";
+        measure formal st;
+          source = "ast_x0_rs1_zero", "ast_x0_rs2_zero";
+        endmeasure
+      endfeature
+    endfeature
+
+    // Ausência de deadlock
+    feature liveness;
+      spec_ref = "Doc RVX";
+      method   = "formal-FPV";
+
+      feature CORE_LIVE_001;
+        req_id      = "CORE-LIVE-001";
+        description = "Com memória que sempre responde, o core sempre completa ou faz trap de uma instrução";
+        measure formal st;
+          source = "ast_live_progress";
+        endmeasure
+      endfeature
+    endfeature
+
+    // Semântica das instruções RV32I (ainda não verificada)
+    feature isa;
+      spec_ref = "Unpriv. Spec cap. 2 (RV32I)";
+      method   = "formal-FPV";
+
+      // ---- Lacunas: requisitos ainda sem propriedade ----
+
+      feature CORE_ISA_001;
+        req_id      = "CORE-ISA-001";
+        description = "Instruções ALU (reg/imm), LUI e AUIPC escrevem em rd o resultado correto";
+        spec_ref    = "Unpriv. Spec 2.4 (integer computational)";
+      endfeature
+
+      feature CORE_ISA_002;
+        req_id      = "CORE-ISA-002";
+        description = "Branches: condição e endereço alvo corretos";
+        spec_ref    = "Unpriv. Spec 2.5 (control transfer)";
+      endfeature
+
+      feature CORE_ISA_003;
+        req_id      = "CORE-ISA-003";
+        description = "JAL/JALR: rd = pc+4, alvo correto, JALR zera o bit 0";
+        spec_ref    = "Unpriv. Spec 2.5 (control transfer)";
+      endfeature
+
+      feature CORE_ISA_004;
+        req_id      = "CORE-ISA-004";
+        description = "Loads/stores: strobe por funct3 e addr[1:0], dados nas lanes certas, extensão de sinal";
+        spec_ref    = "Unpriv. Spec 2.6 (load/store)";
+      endfeature
+
+      feature CORE_ISA_005;
+        req_id      = "CORE-ISA-005";
+        description = "Valor lido de rs1/rs2 é o último escrito naquele registrador";
+        spec_ref    = "Unpriv. Spec 2.1 (registradores)";
+      endfeature
+    endfeature
+  endfeature
+
+  // ===========================================================================
+  // rvx_bus
+  // ===========================================================================
+  feature bus;
+    spec_ref = "Doc RVX";
+    method   = "formal-FPV";
+
+    // Endereço seleciona o device certo (máscara potência de 2, sem sobreposição)
+    feature addr_decode;
+      spec_ref = "Doc RVX; rvx_bus.v";
+      method   = "formal-FPV";
+    endfeature
+
+    // Endereço não mapeado: responde 0 sem fault (decisão de projeto)
+    feature unmapped_access;
+      spec_ref = "Doc RVX; rvx_bus.v";
+      method   = "formal-FPV";
+    endfeature
+
+    // Resposta/dado do device selecionado volta ao manager
+    feature response_mux;
+      spec_ref = "Doc RVX; rvx_bus.v";
+      method   = "formal-FPV";
+    endfeature
+  endfeature
+
+  // ===========================================================================
+  // rvx_ram
+  // ===========================================================================
+  feature ram;
+    spec_ref = "Doc RVX";
+    method   = "formal-FPV";
+
+    // O que foi escrito é o que se lê (endereço simbólico)
+    feature data_integrity;
+      spec_ref = "Doc RVX";
+      method   = "formal-FPV";
+    endfeature
+
+    // Só os bytes habilitados no strobe são escritos
+    feature write_strobe;
+      spec_ref = "Doc RVX";
+      method   = "formal-FPV";
+    endfeature
+
+    // Handshake request/response da RAM
+    feature handshake;
+      spec_ref = "Doc RVX";
+      method   = "formal-FPV";
+    endfeature
+  endfeature
+
+  // ===========================================================================
+  // rvx_mtimer
+  // ===========================================================================
+  feature mtimer;
+    spec_ref = "Priv. Spec 3.2.1 (mtime/mtimecmp); Doc RVX";
+    method   = "formal-FPV; formal-FRV";
+
+    // CR, MTIMEL/H, MTIMECMPL/H: reset, leitura/escrita
+    feature registers;
+      spec_ref = "Doc RVX (mapa de registradores)";
+      method   = "formal-FRV";
+    endfeature
+
+    // mtime incrementa quando CR.EN = 1
+    feature counting;
+      spec_ref = "Priv. Spec 3.2.1";
+      method   = "formal-FPV";
+    endfeature
+
+    // irq = (mtime >= mtimecmp)
+    feature irq;
+      spec_ref = "Priv. Spec 3.2.1";
+      method   = "formal-FPV";
+    endfeature
+  endfeature
+
+  // ===========================================================================
+  // rvx_uart
+  // ===========================================================================
+  feature uart;
+    spec_ref = "Doc RVX";
+    method   = "formal-FRV; formal-FPV; sim";
+
+    // WDATA, RDATA, READY, RXSTATUS
+    feature registers;
+      spec_ref = "Doc RVX (mapa de registradores)";
+      method   = "formal-FRV";
+    endfeature
+
+    // Forma de onda TX/RX no baud rate configurado
+    feature serial_protocol;
+      spec_ref = "Doc RVX";
+      method   = "sim";
+    endfeature
+
+    // uart_irq / uart_irq_response
+    feature irq;
+      spec_ref = "Doc RVX";
+      method   = "formal-FPV";
+    endfeature
+  endfeature
+
+  // ===========================================================================
+  // rvx_spi
+  // ===========================================================================
+  feature spi;
+    spec_ref = "Doc RVX";
+    method   = "formal-FRV; sim";
+
+    // CPOL, CPHA, CHIP_SELECT, CLOCK_CONF, WDATA, RDATA, BUSY
+    feature registers;
+      spec_ref = "Doc RVX (mapa de registradores)";
+      method   = "formal-FRV";
+    endfeature
+
+    // sclk/pico/poci/cs conforme CPOL/CPHA
+    feature serial_protocol;
+      spec_ref = "Doc RVX";
+      method   = "sim";
+    endfeature
+  endfeature
+
+  // ===========================================================================
+  // rvx_gpio
+  // ===========================================================================
+  feature gpio;
+    spec_ref = "Doc RVX";
+    method   = "formal-FRV; formal-FPV";
+
+    // IN, OE, OUT, CLR, SET
+    feature registers;
+      spec_ref = "Doc RVX (mapa de registradores)";
+      method   = "formal-FRV";
+    endfeature
+
+    // gpio_output/gpio_oe refletem OUT/OE; SET/CLR aplicam máscara
+    feature pin_logic;
+      spec_ref = "Doc RVX";
+      method   = "formal-FPV";
+    endfeature
+  endfeature
+
+  // ===========================================================================
+  // rvx (top)
+  // ===========================================================================
+  feature top;
+    spec_ref = "Doc RVX; rvx.v";
+    method   = "formal-CC; formal-FPV";
+
+    // mtimer.irq -> core.irq_timer, uart_irq -> irq_fast[0], irqs não usadas em 0
+    feature irq_connectivity;
+      spec_ref = "rvx.v";
+      method   = "formal-CC";
+    endfeature
+
+    // Sinais de barramento core <-> rvx_bus <-> devices
+    feature bus_connectivity;
+      spec_ref = "rvx.v";
+      method   = "formal-CC";
+    endfeature
+
+    // RAM, UART, MTIMER, GPIO, SPI nos endereços certos, sem sobreposição
+    feature memory_map;
+      spec_ref = "rvx.v (device_start_address / device_region_size)";
+      method   = "formal-FPV";
+    endfeature
+  endfeature
+
+endplan
