@@ -115,7 +115,7 @@ RISC-V Privileged Specification, seção *CSR Address Mapping Conventions*:
 
 ### Sua conclusão
 
-> _escreva aqui_
+A especificação do RISC-V (em *CSR Address Mapping Conventions*) determina que uma tentativa de escrita em um registrador somente leitura deve ser tratada como instrução ilegal. Como o RTL não verifica se o endereço do CSR é somente leitura, um programa pode solicitar a escrita nesse registrador sem que uma exceção seja gerada. Nesse caso, o valor não é escrito e o RTL apenas incrementa em 1 o contador de ciclos. Contudo, nenhuma exceção é levantada, pois a operação não é reconhecida como ilegal. Como essa situação diverge da especificação do RISC-V, trata-se de um bug no RTL. A correção deveria ser feita no bloco da linha 814 de `rvx_core.v`, que hoje verifica apenas se a operação é `csrxxx`. A instrução só deve ser considerada ilegal quando, além de o CSR ser somente leitura, ela realmente escrever: CSRRW/CSRRWI sempre escrevem, e CSRRS/CSRRC (e as formas imediatas) só escrevem quando `rs1`/`uimm` ≠ 0.
 
 ---
 
