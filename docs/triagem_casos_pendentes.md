@@ -113,7 +113,19 @@ RISC-V Privileged Specification, seção *CSR Address Mapping Conventions*:
 6. **Classificação:** bug no RTL, asserção errada ou ambiente?
 7. **Extra:** a especificação também diz que acessar um CSR **que não existe** gera instrução ilegal. O RVX trata isso? (Veja também o Caso 3, ciclos 4 e 5: CSR `0x000`.)
 
-### Sua conclusão
+### conclusão
+
+**Classificação: bug no RTL (Bug 5).**
+
+| Pergunta | Resposta |
+| :--- | :--- |
+| 1. Instrução | `0xc0012073`: `opcode = 1110011` (SYSTEM), `rd = 0`, `funct3 = 010` (CSRRS), `rs1 = 2`, `csr = 0xC00` → `csrrs x0, cycle, x2` |
+| 2. CSR `0xC00` | `cycle` (`localparam CYCLE`), cópia somente leitura do `mcycle` (`0xB00`). É somente leitura porque `0xC00` = `1100 0000 0000`: bits `[11:10] = 11` |
+| 3. Escreve no CSR? | Sim: CSRRS só deixa de escrever com `rs1 = x0`, e aqui `rs1 = x2`. A spec decide pelo número do registrador, não pelo valor guardado nele |
+| 4. RTL | `csrxxx = 1` (`funct3 = 010` é diferente de `000` e de `100`), logo `illegal_system = 0`. Nem `csrxxx` nem `illegal_system` olham o endereço do CSR ou o `rs1`, então qualquer instrução de CSR é aceita como legal. A escrita cai no `else` do bloco do `mcycle`, que só aceita `MCYCLE`/`MCYCLEH`: é descartada e o contador segue incrementando normalmente |
+| 5. Cenário possível? | Sim: a codificação é válida e a spec define o comportamento esperado (exceção de instrução ilegal) |
+| 6. Classificação | Bug no RTL: o cenário é possível e a asserção segue a spec |
+| 7. Extra: CSR inexistente | Em aberto. Pela resposta 4, o `illegal_system` não olha o endereço, então o acesso a um CSR inexistente provavelmente também não gera exceção. Confirmar no Caso 3 (CSR `0x000`) |
 
 A especificação do RISC-V (em *CSR Address Mapping Conventions*) determina que uma tentativa de escrita em um registrador somente leitura deve ser tratada como instrução ilegal. Como o RTL não verifica se o endereço do CSR é somente leitura, um programa pode solicitar a escrita nesse registrador sem que uma exceção seja gerada. Nesse caso, o valor não é escrito e o RTL apenas incrementa em 1 o contador de ciclos. Contudo, nenhuma exceção é levantada, pois a operação não é reconhecida como ilegal. Como essa situação diverge da especificação do RISC-V, trata-se de um bug no RTL. A correção deveria ser feita no bloco da linha 814 de `rvx_core.v`, que hoje verifica apenas se a operação é `csrxxx`. A instrução só deve ser considerada ilegal quando, além de o CSR ser somente leitura, ela realmente escrever: CSRRW/CSRRWI sempre escrevem, e CSRRS/CSRRC (e as formas imediatas) só escrevem quando `rs1`/`uimm` ≠ 0.
 
@@ -132,6 +144,8 @@ ast_minstret_no_count_while_waiting: assert property (
   |=> csr_minstret == $past(csr_minstret)
 );
 ```
+
+Em portugues: Se, num ciclo T, o clock está habilitado, o estado é OPERATING, há um load ou store pendente e não há take_trap, então no ciclo T+1 o minstret deve ter o mesmo valor que tinha no ciclo T.
 
 ### O contra-exemplo
 
@@ -186,9 +200,25 @@ Como um store funciona no RVX:
 6. Qual seria a correção no RTL? (Dica: em quais ciclos uma instrução realmente **conclui**?)
 7. **Classificação** e consequência para a métrica de CPI.
 
-### Sua conclusão
+### Conclusão
 
-> _escreva aqui_
+**Classificação: bug no RTL (Bug 6), independente do Bug 2, mas com a mesma raiz.**
+
+| Pergunta | Resposta |
+| :--- | :--- |
+| 1. Instrução | `0x00000023` = `sb x0, 0(x0)` (STORE, `funct3 = 000`, `rs1 = x0`, `rs2 = x0`, offset 0) |
+| 2. Ciclo da falha | Antecedente no ciclo 4 (`clock_enable = 1`, OPERATING, `store_pending = 1`, sem trap). No ciclo 5, o `minstret` vai de 0 para 1, mas deveria continuar em 0 |
+| 3. Contagem do store | Requisição: +1. Espera: não conta (`clock_enable = 0`). Commit: +1. **Total: 2 vezes** |
+| 4. Load | Mesmo problema: o load também tem ciclo de requisição e de commit com `clock_enable = 1` |
+| 5. Relação com o Bug 2 | Independente: aqui `take_trap = 0` e a instrução conclui normalmente. A correção do Bug 2 (`!take_trap`) não resolve este caso |
+| 6. Correção | Incrementar só quando a instrução conclui: `current_state == STATE_OPERATING && !load_pending && !store_pending && !take_trap` |
+| 7a. Cenário possível? | Sim: é um store comum, e o problema ocorre até sem espera de memória |
+| 7b. Asserção segue a spec? | Sim: o `minstret` conta apenas instruções concluídas (*retired*) |
+| 7c. Causa no RTL | `if (current_state == STATE_OPERATING)` no bloco do `minstret` (`rvx_core.v`, linha 1369) |
+
+A especificação do RISC-V determina que o `minstret` conte apenas instruções concluídas (*retired*). No RVX, o contador incrementa em todo ciclo com `clock_enable` ativo no estado OPERATING (`rvx_core.v`, linha 1369), sem verificar se uma instrução realmente concluiu naquele ciclo. Loads e stores ocupam dois ciclos com `clock_enable` ativo: o ciclo de requisição, em que `load_pending`/`store_pending` vale 1, e o ciclo de commit, em que a resposta da memória chega e o sinal pendente vai a 0. Por isso, cada load e store é contado duas vezes, mesmo sem nenhum ciclo de espera da memória. O formal mostrou a instrução `sb x0, 0(x0)` (`0x00000023`): no ciclo de requisição o `minstret` já sobe de 0 para 1, e o store ainda seria contado de novo no commit.
+
+Este bug é independente do Bug 2, pois aqui não há trap (`take_trap = 0`) e a instrução conclui normalmente, mas os dois têm a mesma raiz: o contador não verifica se a instrução foi concluída. A consequência é uma métrica distorcida: o `minstret` fica inflado e o CPI calculado com `mcycle`/`minstret` fica menor que o real, fazendo o processador parecer melhor do que é. Por exemplo, num programa de 100 ciclos com 50 instruções, das quais 20 são loads/stores, o CPI real é 2,0, mas o medido é 100/70 ≈ 1,43. A correção sugerida, que também resolve o Bug 2, é incrementar o contador apenas quando `current_state == STATE_OPERATING && !load_pending && !store_pending && !take_trap`. Assim, cada instrução é contada exatamente uma vez, no ciclo em que conclui.
 
 ---
 
