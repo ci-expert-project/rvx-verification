@@ -9,6 +9,10 @@
 #   ./scripts/run_formal.sh coverage           # batch run + formal core: which DUT
 #                                              # registers the proofs actually check
 #
+#   VCF_ASSUME_BUG4_FIXED=1 ./scripts/run_formal.sh
+#                                              # hides the known Bug 4 (assumption
+#                                              # asm_bug4_fixed) to see what else fails
+#
 # The CADMICRO license server only has legacy VC Formal features, so the tool
 # must be started with -fml_ultra (the default fml_base/fml_fv modes fail with
 # LICENSE_CHECKOUT_ERROR).
@@ -32,6 +36,11 @@ rm -rf vcst_rtdb .vcst_rtdb
 echo "=============================================="
 echo " RVX Core Formal Verification (VC Formal FPV)"
 echo "=============================================="
+if [ -n "$VCF_ASSUME_BUG4_FIXED" ]; then
+  echo " NOTE: Bug 4 hidden by assumption (VCF_ASSUME_BUG4_FIXED)."
+  echo "       Results do not reflect the real RTL for Bug 4 scenarios."
+  echo "=============================================="
+fi
 
 if [ "$MODE" = "gui" ]; then
   VCF_GUI=1 vc_static_shell -fml_ultra -gui -f run_vc_formal.tcl

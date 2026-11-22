@@ -102,30 +102,42 @@ plan rvx;
         endmeasure
       endfeature
 
-      // ---- Lacunas: requisitos ainda sem propriedade ----
-
       feature CORE_TRAP_009;
         req_id      = "CORE-TRAP-009";
         description = "Em ecall (M-mode), mcause = 11";
         spec_ref    = "Priv. Spec 3.1.15 (mcause)";
+        measure formal st;
+          source = "ast_mcause_ecall";
+        endmeasure
       endfeature
 
       feature CORE_TRAP_010;
         req_id      = "CORE-TRAP-010";
         description = "Em ebreak, mcause = 3";
         spec_ref    = "Priv. Spec 3.1.15 (mcause)";
+        measure formal st;
+          source = "ast_mcause_ebreak";
+        endmeasure
       endfeature
 
       feature CORE_TRAP_011;
         req_id      = "CORE-TRAP-011";
         description = "Em illegal instruction, mcause = 2";
         spec_ref    = "Priv. Spec 3.1.15 (mcause)";
+        measure formal st;
+          source = "ast_mcause_illegal";
+        endmeasure
       endfeature
 
       feature CORE_TRAP_012;
         req_id      = "CORE-TRAP-012";
         description = "Em load/store address misaligned, mcause = 4/6 e mtval = endereço acessado";
         spec_ref    = "Priv. Spec 3.1.15 (mcause), 3.1.16 (mtval)";
+        measure formal st;
+          source = "ast_mcause_misaligned_load",
+                   "ast_mcause_misaligned_store",
+                   "ast_mtval_misaligned_load_store";
+        endmeasure
       endfeature
     endfeature
 
@@ -181,25 +193,29 @@ plan rvx;
 
       feature CORE_IRQ_006;
         req_id      = "CORE-IRQ-006";
-        description = "Instrução que já escreveu rd não é reexecutada após mret (mepc não aponta para ela)";
+        description = "Instrução que já alterou o estado (rd ou CSR) não é reexecutada após mret (mepc não aponta para ela)";
         spec_ref    = "Priv. Spec 3.1.14 (mepc)";
         measure formal st;
-          source = "ast_irq_no_double_execution";
+          source = "ast_irq_no_double_execution", "ast_irq_no_double_csr_write";
         endmeasure
       endfeature
-
-      // ---- Lacunas: requisitos ainda sem propriedade ----
 
       feature CORE_IRQ_007;
         req_id      = "CORE-IRQ-007";
         description = "Prioridade entre interrupções simultâneas: MEI > MSI > MTI (e fast irqs conforme Doc RVX)";
         spec_ref    = "Priv. Spec 3.1.9 (mip/mie); Doc RVX (fast irqs)";
+        measure formal st;
+          source = "ast_irq_mcause_code";
+        endmeasure
       endfeature
 
       feature CORE_IRQ_008;
         req_id      = "CORE-IRQ-008";
         description = "mcause[30:0] tem o código da interrupção tomada (MSI=3, MTI=7, MEI=11, fast >= 16)";
         spec_ref    = "Priv. Spec 3.1.15 (mcause); Doc RVX (fast irqs)";
+        measure formal st;
+          source = "ast_irq_mcause_code";
+        endmeasure
       endfeature
     endfeature
 
@@ -217,24 +233,32 @@ plan rvx;
         endmeasure
       endfeature
 
-      // ---- Lacunas: requisitos ainda sem propriedade ----
-
       feature CORE_CSR_002;
         req_id      = "CORE-CSR-002";
         description = "CSRRW/CSRRS/CSRRC devolvem em rd o valor antigo do CSR e aplicam write/set/clear";
         spec_ref    = "Unpriv. Spec cap. Zicsr";
+        measure formal st;
+          source = "ast_csr_mscratch_write",
+                   "ast_csr_read_old_value";
+        endmeasure
       endfeature
 
       feature CORE_CSR_003;
         req_id      = "CORE-CSR-003";
         description = "Acesso a CSR não implementado gera illegal instruction";
         spec_ref    = "Priv. Spec 2.1 (CSR address map)";
+        measure formal st;
+          source = "ast_csr_nonexistent_illegal";
+        endmeasure
       endfeature
 
       feature CORE_CSR_004;
         req_id      = "CORE-CSR-004";
         description = "mscratch é leitura/escrita sem efeitos colaterais";
         spec_ref    = "Priv. Spec 3.1.13 (mscratch)";
+        measure formal st;
+          source = "ast_mscratch_stable";
+        endmeasure
       endfeature
     endfeature
 
@@ -270,12 +294,13 @@ plan rvx;
         endmeasure
       endfeature
 
-      // ---- Lacunas: requisitos ainda sem propriedade ----
-
       feature CORE_CNT_004;
         req_id      = "CORE-CNT-004";
         description = "minstret incrementa exatamente 1 por instrução retirada";
         spec_ref    = "Priv. Spec 3.1.11 (minstret)";
+        measure formal st;
+          source = "ast_minstret_counts_retired";
+        endmeasure
       endfeature
     endfeature
 
@@ -358,36 +383,52 @@ plan rvx;
       spec_ref = "Unpriv. Spec cap. 2 (RV32I)";
       method   = "formal-FPV";
 
-      // ---- Lacunas: requisitos ainda sem propriedade ----
-
       feature CORE_ISA_001;
         req_id      = "CORE-ISA-001";
         description = "Instruções ALU (reg/imm), LUI e AUIPC escrevem em rd o resultado correto";
         spec_ref    = "Unpriv. Spec 2.4 (integer computational)";
+        measure formal st;
+          source = "ast_isa_alu_result";
+        endmeasure
       endfeature
 
       feature CORE_ISA_002;
         req_id      = "CORE-ISA-002";
         description = "Branches: condição e endereço alvo corretos";
         spec_ref    = "Unpriv. Spec 2.5 (control transfer)";
+        measure formal st;
+          source = "ast_isa_branch_target";
+        endmeasure
       endfeature
 
       feature CORE_ISA_003;
         req_id      = "CORE-ISA-003";
         description = "JAL/JALR: rd = pc+4, alvo correto, JALR zera o bit 0";
         spec_ref    = "Unpriv. Spec 2.5 (control transfer)";
+        measure formal st;
+          source = "ast_isa_link_address",
+                   "ast_isa_jump_target";
+        endmeasure
       endfeature
 
       feature CORE_ISA_004;
         req_id      = "CORE-ISA-004";
         description = "Loads/stores: strobe por funct3 e addr[1:0], dados nas lanes certas, extensão de sinal";
         spec_ref    = "Unpriv. Spec 2.6 (load/store)";
+        measure formal st;
+          source = "ast_isa_store_access",
+                   "ast_isa_load_result";
+        endmeasure
       endfeature
 
       feature CORE_ISA_005;
         req_id      = "CORE-ISA-005";
         description = "Valor lido de rs1/rs2 é o último escrito naquele registrador";
         spec_ref    = "Unpriv. Spec 2.1 (registradores)";
+        measure formal st;
+          source = "ast_isa_regfile_rs1",
+                   "ast_isa_regfile_rs2";
+        endmeasure
       endfeature
     endfeature
   endfeature

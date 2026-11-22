@@ -80,7 +80,15 @@ module rvx_core_sva (
   input logic [31:0]  csr_mtval,
   input logic         csr_mcause_interrupt_flag,
   input logic [63:0]  csr_minstret,
-  input logic [63:0]  csr_mcycle
+  input logic [63:0]  csr_mcycle,
+
+  // Data paths used by the CSR and ISA reference checks
+  input logic [31:0]  read_data,
+  input logic [31:0]  writeback_multiplexer_output,
+  input logic [31:0]  csr_data_out,
+  input logic [31:0]  csr_write_data,
+  input logic [31:0]  csr_mscratch,
+  input logic [63:0]  real_time_clock
 );
 
   // Encoding copied from rvx_core localparams
@@ -89,6 +97,9 @@ module rvx_core_sva (
   localparam logic [3:0]  STATE_TRAP_RETURN = 4'b1000;
   localparam logic [11:0] MCYCLE            = 12'hB00;
   localparam logic [11:0] MCYCLEH           = 12'hB80;
+  localparam logic [11:0] MSCRATCH          = 12'h340;
+  localparam logic [11:0] MINSTRET          = 12'hB02;
+  localparam logic [11:0] MINSTRETH         = 12'hB82;
 
   default clocking cb @(posedge clock); endclocking
   default disable iff (reset_internal);
@@ -112,6 +123,20 @@ module rvx_core_sva (
   asm_fair_halt: assume property (
     s_eventually !halt
   );
+
+  // Optional: hide the known Bug 4 so it does not mask other results.
+  // Bug 4: the state register advances with clock_enable | interrupt_pending,
+  // so a pending interrupt while the core is stalled in TRAP_TAKEN/TRAP_RETURN
+  // skips the trap entry/return actions (PC, mcause, mstatus). This assumption
+  // removes that scenario. Enable with VCF_ASSUME_BUG4_FIXED=1; off by default,
+  // so the regular report keeps showing the real bug.
+`ifdef ASSUME_BUG4_FIXED
+  asm_bug4_fixed: assume property (
+    !clock_enable &&
+    (current_state == STATE_TRAP_TAKEN || current_state == STATE_TRAP_RETURN)
+    |-> !interrupt_pending
+  );
+`endif
 
   // ----------------------------------------------------------------------------
   // Reference model: address of the instruction being executed
@@ -389,6 +414,398 @@ module rvx_core_sva (
   ast_ro_csr_write_illegal: assert property (
     csrxxx && instruction_csr_address[11:10] == 2'b11 && csr_is_write
     |-> illegal_instruction
+  );
+
+  // Accessing a CSR that does not exist raises an illegal instruction
+  // exception. "Exists" = implemented by RVX, or mandatory in M-mode and allowed
+  // to read as zero (mvendorid, mhartid, mconfigptr, hpm counters/events), or
+  // optional with an ambiguous rule when absent (mcountinhibit, PMP, debug
+  // triggers): those are not checked.
+  function automatic logic csr_exists(input logic [11:0] a);
+    case (a)
+      12'hF11, 12'hF12, 12'hF13, 12'hF14, 12'hF15,             // machine info
+      12'h300, 12'h301, 12'h304, 12'h305, 12'h310, 12'h320,   // trap setup
+      12'h340, 12'h341, 12'h342, 12'h343, 12'h344,            // trap handling
+      12'hB00, 12'hB02, 12'hB80, 12'hB82,                     // mcycle/minstret
+      12'hC00, 12'hC01, 12'hC02, 12'hC80, 12'hC81, 12'hC82:   // cycle/time/instret
+        return 1'b1;
+      default:
+        return (a >= 12'hB03 && a <= 12'hB1F) || (a >= 12'hB83 && a <= 12'hB9F) ||
+               (a >= 12'h323 && a <= 12'h33F) ||
+               (a >= 12'hC03 && a <= 12'hC1F) || (a >= 12'hC83 && a <= 12'hC9F) ||
+               (a >= 12'h3A0 && a <= 12'h3EF) ||                   // PMP
+               (a >= 12'h7A0 && a <= 12'h7AF);                     // debug triggers
+    endcase
+  endfunction
+
+  ast_csr_nonexistent_illegal: assert property (
+    csrxxx && !csr_exists(instruction_csr_address) |-> illegal_instruction
+  );
+
+  // ----------------------------------------------------------------------------
+  // mcause / mtval for the other synchronous exceptions
+  // ----------------------------------------------------------------------------
+  // Same timing as ast_mcause_misaligned_fetch: mcause is written in the first
+  // enabled TRAP_TAKEN cycle and holds the new value one cycle later.
+
+  ast_mcause_ecall: assert property (
+    exc_taken && ecall
+    |=> (clock_enable [->1]) ##1 csr_mcause == 32'd11
+  );
+
+  ast_mcause_ebreak: assert property (
+    exc_taken && ebreak
+    |=> (clock_enable [->1]) ##1 csr_mcause == 32'd3
+  );
+
+  ast_mcause_illegal: assert property (
+    exc_taken && illegal_instruction
+    |=> (clock_enable [->1]) ##1 csr_mcause == 32'd2
+  );
+
+  ast_mcause_misaligned_load: assert property (
+    exc_taken && misaligned_load && !illegal_instruction
+    |=> (clock_enable [->1]) ##1 csr_mcause == 32'd4
+  );
+
+  ast_mcause_misaligned_store: assert property (
+    exc_taken && misaligned_store && !illegal_instruction
+    |=> (clock_enable [->1]) ##1 csr_mcause == 32'd6
+  );
+
+  // mtval holds the faulting byte address (written in the trap cycle)
+  ast_mtval_misaligned_load_store: assert property (
+    exc_taken && (misaligned_load || misaligned_store) && !illegal_instruction
+    |=> csr_mtval == $past(target_address_adder)
+  );
+
+  // ----------------------------------------------------------------------------
+  // Interrupt cause code and priority
+  // ----------------------------------------------------------------------------
+  // Spec order for the standard interrupts: MEI > MSI > MTI. RVX places the 16
+  // fast interrupts (custom, cause 16 + i) above them, lower index first
+  // (rvx.v: irq_fast[0] = UART "highest priority").
+  logic [15:0] irq_fast_active;
+  logic [4:0]  irq_code_now;
+  logic [4:0]  irq_code_q;
+
+  assign irq_fast_active = csr_mie[31:16] & csr_mip[31:16];
+
+  always_comb begin
+    irq_code_now = 5'd0;
+    if (|irq_fast_active) begin
+      for (int k = 15; k >= 0; k--)
+        if (irq_fast_active[k]) irq_code_now = 5'(16 + k);
+    end
+    else if (csr_mie[11] && csr_mip[11]) irq_code_now = 5'd11;   // MEI
+    else if (csr_mie[3]  && csr_mip[3])  irq_code_now = 5'd3;    // MSI
+    else if (csr_mie[7]  && csr_mip[7])  irq_code_now = 5'd7;    // MTI
+  end
+
+  always_ff @(posedge clock) begin
+    if (reset_internal)
+      irq_code_q <= '0;
+    else if (irq_taken)
+      irq_code_q <= irq_code_now;
+  end
+
+  ast_irq_mcause_code: assert property (
+    irq_taken
+    |=> (clock_enable [->1]) ##1 csr_mcause == {1'b1, 26'b0, irq_code_q}
+  );
+
+  // ----------------------------------------------------------------------------
+  // CSR instruction semantics (checked on mscratch, a plain read/write CSR)
+  // ----------------------------------------------------------------------------
+  // CSRRW: csr = src. CSRRS: csr = csr | src. CSRRC: csr = csr & ~src.
+  // src = rs1 value, or the 5-bit uimm (instruction[19:15]) in the I forms.
+  function automatic logic [31:0] csr_apply(
+    input logic [1:0] op, input logic [31:0] old_value, input logic [31:0] src
+  );
+    case (op)
+      2'b01:   return src;
+      2'b10:   return old_value | src;
+      2'b11:   return old_value & ~src;
+      default: return old_value;
+    endcase
+  endfunction
+
+  logic [31:0] csr_src;
+  logic        mscratch_access;
+
+  assign csr_src = instruction[14] ? {27'b0, instruction[19:15]} : rs1_data;
+  assign mscratch_access =
+    clock_enable && current_state == STATE_OPERATING && csrxxx &&
+    instruction_csr_address == MSCRATCH;
+
+  // The CSR gets the value defined by the operation
+  ast_csr_mscratch_write: assert property (
+    mscratch_access && !take_trap
+    |=> csr_mscratch == $past(csr_apply(instruction[13:12], csr_mscratch, csr_src))
+  );
+
+  // rd gets the old value of the CSR
+  ast_csr_read_old_value: assert property (
+    mscratch_access && integer_file_write_enable && instruction_rd_address != 5'd0
+    |-> writeback_multiplexer_output == csr_mscratch
+  );
+
+  // mscratch has no side effects: only a CSR instruction on it changes it
+  ast_mscratch_stable: assert property (
+    !mscratch_access |=> $stable(csr_mscratch)
+  );
+
+  // An interrupted CSR instruction that already changed mscratch must not be
+  // replayed after mret (mepc must not point to it), or it executes twice
+  // (e.g. csrrw x5, mscratch, x5 would swap and then swap back).
+  ast_irq_no_double_csr_write: assert property (
+    irq_taken && mscratch_access &&
+    csr_apply(instruction[13:12], csr_mscratch, csr_src) != csr_mscratch
+    |=> (handler_start [->1]) ##0 csr_mepc != irq_pc
+  );
+
+  // ----------------------------------------------------------------------------
+  // minstret counts each retired instruction exactly once
+  // ----------------------------------------------------------------------------
+  // An instruction retires in an enabled OPERATING cycle with no trap and no
+  // load/store still waiting for the memory (the commit cycle counts).
+  // CSRRS/CSRRC with rs1 = x0 (e.g. csrr rd, minstret) do not write the CSR.
+  logic retire;
+  logic minstret_write;
+
+  assign retire =
+    clock_enable && current_state == STATE_OPERATING &&
+    !load_pending && !store_pending && !take_trap;
+  assign minstret_write =
+    clock_enable && csrxxx && csr_is_write &&
+    (instruction_csr_address == MINSTRET || instruction_csr_address == MINSTRETH);
+
+  ast_minstret_counts_retired: assert property (
+    !minstret_write
+    |=> csr_minstret == $past(csr_minstret) + ($past(retire) ? 64'd1 : 64'd0)
+  );
+
+  // ----------------------------------------------------------------------------
+  // RV32I instruction semantics (reference model)
+  // ----------------------------------------------------------------------------
+  // Decoded straight from the instruction word, independent of the RTL decoder.
+  // exec_pc is the address of the instruction in execution (see above). Commit
+  // cycles replay a load/store, so they are excluded where exec_pc is used.
+  logic [6:0]  opcode;
+  logic [2:0]  funct3;
+  logic [6:0]  funct7;
+  logic [31:0] imm_i, imm_s, imm_b, imm_u, imm_j;
+  logic        is_op, is_op_imm, is_lui, is_auipc, is_jal, is_jalr, is_branch;
+  logic        no_commit;
+
+  assign opcode = instruction[6:0];
+  assign funct3 = instruction[14:12];
+  assign funct7 = instruction[31:25];
+  assign imm_i  = {{20{instruction[31]}}, instruction[31:20]};
+  assign imm_s  = {{20{instruction[31]}}, instruction[31:25], instruction[11:7]};
+  assign imm_b  = {{19{instruction[31]}}, instruction[31], instruction[7],
+                   instruction[30:25], instruction[11:8], 1'b0};
+  assign imm_u  = {instruction[31:12], 12'b0};
+  assign imm_j  = {{11{instruction[31]}}, instruction[31], instruction[19:12],
+                   instruction[20], instruction[30:21], 1'b0};
+
+  assign is_op     = opcode == 7'b0110011;
+  assign is_op_imm = opcode == 7'b0010011;
+  assign is_lui    = opcode == 7'b0110111;
+  assign is_auipc  = opcode == 7'b0010111;
+  assign is_jal    = opcode == 7'b1101111;
+  assign is_jalr   = opcode == 7'b1100111 && funct3 == 3'b000;
+  assign is_branch = opcode == 7'b1100011 && funct3 != 3'b010 && funct3 != 3'b011;
+  assign no_commit = !load_commit_cycle && !store_commit_cycle;
+
+  // ALU result for OP / OP-IMM, valid only for legal encodings
+  logic [31:0] alu_b, alu_ref;
+  logic [4:0]  shamt;
+  logic        alu_valid;
+
+  assign alu_b = is_op ? rs2_data : imm_i;
+  assign shamt = alu_b[4:0];
+
+  always_comb begin
+    alu_ref   = '0;
+    alu_valid = 1'b0;
+    if (is_op || is_op_imm) begin
+      alu_valid = 1'b1;
+      case (funct3)
+        3'b000: alu_ref = (is_op && funct7[5]) ? rs1_data - alu_b : rs1_data + alu_b;
+        3'b001: alu_ref = rs1_data << shamt;
+        3'b010: alu_ref = {31'b0, $signed(rs1_data) < $signed(alu_b)};
+        3'b011: alu_ref = {31'b0, rs1_data < alu_b};
+        3'b100: alu_ref = rs1_data ^ alu_b;
+        3'b101: alu_ref = funct7[5] ? 32'($signed(rs1_data) >>> shamt) : rs1_data >> shamt;
+        3'b110: alu_ref = rs1_data | alu_b;
+        3'b111: alu_ref = rs1_data & alu_b;
+      endcase
+      // funct7 must be 0, except SUB/SRA (0100000); OP-IMM only checks it
+      // for the shifts
+      if (is_op && !(funct7 == 7'b0 ||
+                     (funct7 == 7'b0100000 && (funct3 == 3'b000 || funct3 == 3'b101))))
+        alu_valid = 1'b0;
+      if (is_op_imm && funct3 == 3'b001 && funct7 != 7'b0)
+        alu_valid = 1'b0;
+      if (is_op_imm && funct3 == 3'b101 && !(funct7 == 7'b0 || funct7 == 7'b0100000))
+        alu_valid = 1'b0;
+    end
+    else if (is_lui) begin
+      alu_valid = 1'b1;
+      alu_ref   = imm_u;
+    end
+    else if (is_auipc) begin
+      alu_valid = 1'b1;
+      alu_ref   = exec_pc + imm_u;
+    end
+  end
+
+  // ALU, LUI and AUIPC write the correct result to rd
+  ast_isa_alu_result: assert property (
+    clock_enable && rd_write && alu_valid && no_commit
+    |-> writeback_multiplexer_output == alu_ref
+  );
+
+  // JAL/JALR write the return address (pc + 4) to rd
+  ast_isa_link_address: assert property (
+    clock_enable && rd_write && (is_jal || is_jalr) && no_commit
+    |-> writeback_multiplexer_output == exec_pc + 32'd4
+  );
+
+  // Branches: the next fetch is the target if the condition holds, pc + 4 if not
+  logic branch_taken_ref;
+
+  always_comb begin
+    case (funct3)
+      3'b000:  branch_taken_ref = rs1_data == rs2_data;                    // BEQ
+      3'b001:  branch_taken_ref = rs1_data != rs2_data;                    // BNE
+      3'b100:  branch_taken_ref = $signed(rs1_data) <  $signed(rs2_data);  // BLT
+      3'b101:  branch_taken_ref = $signed(rs1_data) >= $signed(rs2_data);  // BGE
+      3'b110:  branch_taken_ref = rs1_data <  rs2_data;                    // BLTU
+      3'b111:  branch_taken_ref = rs1_data >= rs2_data;                    // BGEU
+      default: branch_taken_ref = 1'b0;
+    endcase
+  end
+
+  ast_isa_branch_target: assert property (
+    clock_enable && current_state == STATE_OPERATING && is_branch && !take_trap && no_commit
+    |-> instruction_address == (branch_taken_ref ? exec_pc + imm_b : exec_pc + 32'd4)
+  );
+
+  // JAL jumps to pc + imm, JALR to (rs1 + imm) with bit 0 cleared
+  ast_isa_jump_target: assert property (
+    clock_enable && current_state == STATE_OPERATING && (is_jal || is_jalr) &&
+    !take_trap && no_commit
+    |-> instruction_address == (is_jal ? exec_pc + imm_j : (rs1_data + imm_i) & ~32'd1)
+  );
+
+  // Stores: word address, byte strobes from funct3 and address[1:0], and the
+  // data of the enabled bytes in the right lanes
+  logic [31:0] store_ea, store_data_ref, store_mask;
+  logic [3:0]  store_strobe_ref;
+  logic        store_valid;
+
+  assign store_ea = rs1_data + imm_s;
+
+  always_comb begin
+    store_valid      = 1'b1;
+    store_strobe_ref = 4'b0000;
+    store_data_ref   = '0;
+    case (funct3)
+      3'b000: begin                                                   // SB
+        store_strobe_ref = 4'b0001 << store_ea[1:0];
+        store_data_ref   = {4{rs2_data[7:0]}};
+      end
+      3'b001: begin                                                   // SH
+        store_strobe_ref = store_ea[1] ? 4'b1100 : 4'b0011;
+        store_data_ref   = {2{rs2_data[15:0]}};
+      end
+      3'b010: begin                                                   // SW
+        store_strobe_ref = 4'b1111;
+        store_data_ref   = rs2_data;
+      end
+      default: store_valid = 1'b0;
+    endcase
+  end
+
+  assign store_mask = {{8{write_strobe[3]}}, {8{write_strobe[2]}},
+                       {8{write_strobe[1]}}, {8{write_strobe[0]}}};
+
+  ast_isa_store_access: assert property (
+    clock_enable && current_state == STATE_OPERATING && store && write_request &&
+    store_valid && no_commit
+    |-> rw_address   == {store_ea[31:2], 2'b00} &&
+        write_strobe == store_strobe_ref &&
+        (write_data & store_mask) == (store_data_ref & store_mask)
+  );
+
+  // Loads: in the commit cycle, rd gets the addressed byte/half/word of the
+  // memory response, sign- or zero-extended
+  logic [31:0] load_ea, load_ref;
+  logic [7:0]  load_byte;
+  logic [15:0] load_half;
+  logic        load_valid;
+
+  assign load_ea   = rs1_data + imm_i;
+  assign load_byte = read_data[8 * load_ea[1:0] +: 8];
+  assign load_half = load_ea[1] ? read_data[31:16] : read_data[15:0];
+
+  always_comb begin
+    load_valid = 1'b1;
+    case (funct3)
+      3'b000:  load_ref = {{24{load_byte[7]}}, load_byte};    // LB
+      3'b001:  load_ref = {{16{load_half[15]}}, load_half};   // LH
+      3'b010:  load_ref = read_data;                          // LW
+      3'b100:  load_ref = {24'b0, load_byte};                 // LBU
+      3'b101:  load_ref = {16'b0, load_half};                 // LHU
+      default: begin
+        load_ref   = '0;
+        load_valid = 1'b0;
+      end
+    endcase
+  end
+
+  ast_isa_load_result: assert property (
+    clock_enable && load && load_commit_cycle && rd_write && load_valid
+    |-> writeback_multiplexer_output == load_ref
+  );
+
+  // Register file: the value read from a register is the last value written
+  // to it. Checked on one symbolic register with a 32-bit shadow copy. The
+  // register is chosen by the tool in the first cycle after reset (sampled from
+  // real_time_clock, a free input that only feeds the time CSR) and then kept
+  // constant, so the proof holds for every register x1..x31. The register file
+  // and the shadow copy are both zero after reset, and no register is written
+  // in that first cycle (the core is still in STATE_RESET).
+  logic [4:0]  sym_reg;
+  logic        sym_reg_chosen;
+  logic [31:0] sym_reg_value;
+
+  always_ff @(posedge clock) begin
+    if (reset_internal)
+      sym_reg_chosen <= 1'b0;
+    else if (!sym_reg_chosen) begin
+      sym_reg        <= real_time_clock[4:0];
+      sym_reg_chosen <= 1'b1;
+    end
+  end
+
+  always_ff @(posedge clock) begin
+    if (reset_internal)
+      sym_reg_value <= '0;
+    else if (clock_enable && integer_file_write_enable && instruction_rd_address == sym_reg)
+      sym_reg_value <= writeback_multiplexer_output;
+  end
+
+  ast_isa_regfile_rs1: assert property (
+    sym_reg_chosen && sym_reg != 5'd0 && instruction_rs1_address == sym_reg
+    |-> rs1_data == sym_reg_value
+  );
+
+  ast_isa_regfile_rs2: assert property (
+    sym_reg_chosen && sym_reg != 5'd0 && instruction_rs2_address == sym_reg
+    |-> rs2_data == sym_reg_value
   );
 
   // ----------------------------------------------------------------------------

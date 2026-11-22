@@ -9,7 +9,14 @@
 set_fml_appmode FPV
 
 # 1. Read RTL + SVA checker (bound into rvx_core)
-read_file -top rvx_core -format sverilog -sva -vcs {-f rvx_core_formal.f}
+#    VCF_ASSUME_BUG4_FIXED=1 -> enables asm_bug4_fixed in the checker, which
+#    hides the known Bug 4 so it does not mask other results
+set vcs_opts "-f rvx_core_formal.f"
+if {[info exists ::env(VCF_ASSUME_BUG4_FIXED)]} {
+  append vcs_opts " +define+ASSUME_BUG4_FIXED"
+  puts "NOTE: ASSUME_BUG4_FIXED enabled (Bug 4 scenario excluded by assumption)"
+}
+read_file -top rvx_core -format sverilog -sva -vcs $vcs_opts
 
 # 2. Clock and reset (rvx_core reset is active-high)
 create_clock clock -period 100
