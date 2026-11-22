@@ -125,7 +125,7 @@ RISC-V Privileged Specification, seção *CSR Address Mapping Conventions*:
 | 4. RTL | `csrxxx = 1` (`funct3 = 010` é diferente de `000` e de `100`), logo `illegal_system = 0`. Nem `csrxxx` nem `illegal_system` olham o endereço do CSR ou o `rs1`, então qualquer instrução de CSR é aceita como legal. A escrita cai no `else` do bloco do `mcycle`, que só aceita `MCYCLE`/`MCYCLEH`: é descartada e o contador segue incrementando normalmente |
 | 5. Cenário possível? | Sim: a codificação é válida e a spec define o comportamento esperado (exceção de instrução ilegal) |
 | 6. Classificação | Bug no RTL: o cenário é possível e a asserção segue a spec |
-| 7. Extra: CSR inexistente | Em aberto. Pela resposta 4, o `illegal_system` não olha o endereço, então o acesso a um CSR inexistente provavelmente também não gera exceção. Confirmar no Caso 3 (CSR `0x000`) |
+| 7. Extra: CSR inexistente | Não trata. Confirmado no Caso 3 (pergunta 7): `csrrw x0, 0x000, x0` acessa o CSR `0x000`, que não existe no RVX, sem gerar exceção. A causa é a mesma da resposta 4: o `illegal_system` não olha o endereço do CSR |
 
 A especificação do RISC-V (em *CSR Address Mapping Conventions*) determina que uma tentativa de escrita em um registrador somente leitura deve ser tratada como instrução ilegal. Como o RTL não verifica se o endereço do CSR é somente leitura, um programa pode solicitar a escrita nesse registrador sem que uma exceção seja gerada. Nesse caso, o valor não é escrito e o RTL apenas incrementa em 1 o contador de ciclos. Contudo, nenhuma exceção é levantada, pois a operação não é reconhecida como ilegal. Como essa situação diverge da especificação do RISC-V, trata-se de um bug no RTL. A correção deveria ser feita no bloco da linha 814 de `rvx_core.v`, que hoje verifica apenas se a operação é `csrxxx`. A instrução só deve ser considerada ilegal quando, além de o CSR ser somente leitura, ela realmente escrever: CSRRW/CSRRWI sempre escrevem, e CSRRS/CSRRC (e as formas imediatas) só escrevem quando `rs1`/`uimm` ≠ 0.
 
@@ -233,6 +233,8 @@ ast_bus_word_aligned: assert property (
 );
 ```
 
+Em portugues: Se há read_request ou write_request, então, no mesmo ciclo, os 2 bits menos significativos do rw_address precisam ser 00. Ou seja, "o barramento só é acessado em endereços múltiplos de 4". O barramento é endereçado por palavra (a rvx_ram, por exemplo, ignora os 2 bits de baixo: rw_address >> 2). Loads e stores de byte ou meia palavra usam o endereço da palavra mais o write_strobe para escolher os bytes.
+
 ### O contra-exemplo
 
 | cycle | current_state | program_counter | instruction | take_trap | read_request | rw_address |
@@ -274,12 +276,45 @@ assign effective_address = $unsigned(rw_address[31:0] >> 2);
 
 ### Sua conclusão
 
-> _escreva aqui_
+**Classificação: asserção errada (regra mais rígida do que qualquer especificação). Asserção corrigida. A falha que permanece é causada pelo Bug 4.**
 
----
+| Pergunta | Resposta |
+| :--- | :--- |
+| 1. Instrução | `0x0020106f`: `opcode = 1101111` (JAL, formato J), `rd = x0`, offset `0x1002` → `jal x0, 0x1002`. Alvo = PC + offset = `0x8 + 0x1002` = `0x100a`. Como os 2 bits de baixo do alvo são `10` (não é múltiplo de 4) e o RVX não implementa a extensão C, ocorre a exceção *instruction-address-misaligned*, por isso `take_trap = 1` |
+| 2. Origem do `rw_address = 0x100a` | O RVX pede a próxima instrução no mesmo ciclo em que executa a atual. Para um salto, `next_address = branch_target_address` = `0x100a` (`rvx_core.v`, linhas 464-467) → `next_program_counter` (`PC_NEXT`, linhas 444-451) → `instruction_address` (linhas 431-436) → `rw_address`, pois o JAL não é load/store. O mesmo `next_address` é usado para detectar o desalinhamento (`misaligned_instruction_address = take_branch & next_address[1]`, linhas 1213-1214), mas essa detecção não bloqueia a busca |
+| 3. A leitura é usada? | Não. No ciclo seguinte (`TRAP_TAKEN`), `program_counter_source = PC_TRAP` e o PC vai para o `mtvec`. A instrução lida de `0x100a` é descartada (busca especulativa) |
+| 4. A spec define o barramento? | Não. O `rvx_bus` é uma interface própria do RVX. Nem a spec RISC-V nem a documentação do RVX (`docs/hardware.md`, só o mapa de memória) exigem acessos alinhados. O `rvx_bus` repassa qualquer endereço sem alterá-lo. A regra "todo acesso é alinhado" foi uma convenção nossa, baseada nos loads/stores, que sempre zeram `rw_address[1:0]` |
+| 5. Impacto | Nenhum. A `rvx_ram` ignora os 2 bits de baixo (`rw_address >> 2`) e lê a palavra de `0x1008`. Nos periféricos, todos os registradores ficam em múltiplos de 4 (bit 1 = 0), e uma busca descartada sempre tem bit 1 = 1, então nunca acerta um registrador nem dispara efeito colateral (por exemplo, a leitura do `REG_RDATA` da UART, que limpa a interrupção de recepção) |
+| 6. Decisão | Relaxar a asserção para ignorar a busca descartada durante toda a sua duração: no ciclo do trap (`take_trap`) e nos ciclos seguintes em que o core fica parado (`clock_enable = 0`) e o barramento repete o mesmo endereço. Foram necessárias três iterações, cada uma motivada por um novo contra-exemplo (ver abaixo) |
+| 7. Extra: `0x00001073` | `csrrw x0, 0x000, x0` (`funct3 = 001`, CSRRW). O CSR `0x000` não existe no RVX: não há `localparam` com esse endereço, e a leitura cai no `default` (`csr_data_out = 0`, linha 1206). O core **não** marcou como ilegal (`take_trap = 0` nos ciclos 4 e 5), embora a spec exija exceção de instrução ilegal no acesso a CSR inexistente. Confirma a hipótese da pergunta 7 do Caso 1: o `illegal_system` não olha o endereço do CSR. É um achado novo, ligado ao requisito CORE-CSR-003 da matriz, e ainda precisa ser registrado (candidato a próximo bug do relatório) |
 
-## Depois da triagem
+A asserção `ast_bus_word_aligned` exigia que todo acesso ao barramento usasse endereço alinhado a palavra. O formal encontrou uma exceção: no ciclo em que um salto para alvo desalinhado gera o trap *instruction-address-misaligned*, o core já coloca o alvo (`0x100a`) no barramento para buscar a próxima instrução, porque o endereço de busca vem do `next_address` e não é bloqueado pelo `take_trap`. Essa leitura é descartada: no ciclo seguinte, o PC vai para o `mtvec`. Ela também não tem efeito colateral, porque a `rvx_ram` ignora os 2 bits de baixo do endereço e, nos periféricos, um endereço com bit 1 = 1 nunca corresponde a um registrador. Como nem a especificação RISC-V nem a documentação do RVX exigem acessos alinhados ao barramento, a regra da asserção era uma convenção nossa, mais rígida do que o projeto define. Por isso, a classificação é asserção errada.
 
-- Atualize o `docs/bug_analysis_misaligned_mepc.md` (ou crie um documento de achados) com os casos classificados como bug.
-- Se alguma asserção for corrigida, rode `./scripts/run_formal.sh` de novo e confira o novo status.
-- Rode `./scripts/run_formal.sh coverage` para ver se o coverage formal mudou.
+A asserção foi corrigida em `synopsys/formal/rvx_core_sva.sv` para verificar apenas os acessos que têm efeito. A correção precisou de três iterações, porque a busca descartada pode durar mais de um ciclo:
+
+| Iteração | Asserção | Novo contra-exemplo |
+| :--- | :--- | :--- |
+| 1 | Ignorar a busca só no ciclo do trap: `read_request && !take_trap` | `jal x0, 2` (alvo `0x2`). No ciclo seguinte (`TRAP_TAKEN`), a memória ainda não respondeu, e o protocolo mantém o pedido com o mesmo endereço até a resposta (`ast_bus_read_hold`) |
+| 2 | Marcar a busca descartada (`discarded_fetch`) e liberá-la na resposta da memória (`read_response`) | Alvo `0x6`. A resposta da busca anterior chegou no mesmo ciclo do trap e zerou a marca antes de ela ser feita. Além disso, com o core parado por `halt`, o barramento continua com o mesmo endereço mesmo depois da resposta |
+| 3 | Seguir o `clock_enable`: com o core parado, o `instruction_address` repete o endereço do último ciclo ativo (`rvx_core.v`, linhas 431-436). `discarded_fetch` guarda se o último ciclo ativo emitiu a busca descartada | Bug 4 (abaixo): a asserção passa a pegar um problema real |
+
+Versão final:
+
+```systemverilog
+logic discarded_fetch;
+always_ff @(posedge clock) begin
+  if (reset_internal)
+    discarded_fetch <= 1'b0;
+  else if (clock_enable)
+    discarded_fetch <= read_request && take_trap;
+end
+
+ast_bus_word_aligned: assert property (
+  ((read_request && !take_trap && !(!clock_enable && discarded_fetch)) || write_request)
+  |-> rw_address[1:0] == 2'b00
+);
+```
+
+Com essa versão, a asserção continua *falsified* (profundidade 6), mas a causa é o **Bug 4**. No contra-exemplo, um salto para `0x306` gera o trap (ciclo 5). No ciclo 6, o core está em `TRAP_TAKEN`, parado por `halt` (`clock_enable = 0`) e com `interrupt_pending = 1`. Como o registrador de estado avança com `clock_enable | interrupt_pending` (`rvx_core.v`, linha 1120), mas o PC só muda com `clock_enable` (linhas 470-473), no ciclo 7 o core volta a OPERATING com o PC ainda em `0x306`, sem ter ido para o `mtvec`. Ele passa a executar em endereço desalinhado e busca a próxima instrução em `0x30a`, sem trap. É uma consequência nova do Bug 4, além do `mcause` e do `mstatus` desatualizados: o core executa instruções em endereço desalinhado. A asserção também detectaria um `mret` para um `mepc` desalinhado (consequência do Bug 3), em que a busca acontece sem `take_trap`. Ela deve passar a ser provada quando o Bug 4 for corrigido.
+
+O contra-exemplo revelou também um achado à parte: nos ciclos 4 e 5, a instrução `csrrw x0, 0x000, x0` acessa um CSR que não existe no RVX sem gerar exceção de instrução ilegal, como a especificação exige. A causa é a mesma do Bug 5 (o `illegal_system` não olha o endereço do CSR), e a correção deve tratar os dois casos juntos: marcar como ilegal o acesso a CSR inexistente e a escrita em CSR somente leitura.

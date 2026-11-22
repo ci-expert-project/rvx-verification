@@ -320,9 +320,30 @@ module rvx_core_sva (
     write_request |-> write_strobe != 4'b0000
   );
 
-  // The bus is word addressed: every access uses a word-aligned address
+  // Every access that takes effect is word aligned. Loads/stores always clear
+  // rw_address[1:0]. The only misaligned access is the instruction fetch issued
+  // in the same cycle as an instruction-address-misaligned trap (jump/branch to
+  // a target with bit 1 set): it is discarded (the PC goes to mtvec) and, with
+  // bit 1 set, never matches a peripheral register (all at multiples of 4).
+  // Neither the RISC-V spec nor the RVX docs require aligned fetches.
+  //
+  // While the core is stalled (clock_enable = 0, waiting for the memory or
+  // halted), instruction_address keeps the address of the last enabled cycle,
+  // so the discarded fetch stays on the bus, even after the memory answers.
+  // discarded_fetch records whether the last enabled cycle issued that fetch.
+  // The next enabled cycle fetches from the trap vector, which is checked.
+  logic discarded_fetch;
+
+  always_ff @(posedge clock) begin
+    if (reset_internal)
+      discarded_fetch <= 1'b0;
+    else if (clock_enable)
+      discarded_fetch <= read_request && take_trap;
+  end
+
   ast_bus_word_aligned: assert property (
-    (read_request || write_request) |-> rw_address[1:0] == 2'b00
+    ((read_request && !take_trap && !(!clock_enable && discarded_fetch)) || write_request)
+    |-> rw_address[1:0] == 2'b00
   );
 
   // ----------------------------------------------------------------------------
